@@ -93,8 +93,8 @@ export default function ReceivePage() {
 
   return (
     <>
-      <main className="h-[100dvh] flex flex-col bg-[#0a0a0a] px-5 pt-5 pb-5">
-        <div className="w-full max-w-md mx-auto flex flex-col h-full min-h-0">
+      <main className="h-[100dvh] overflow-y-auto flex flex-col justify-center bg-[#0a0a0a] px-5 py-5">
+        <div className="w-full max-w-md mx-auto">
 
           {/* Top nav */}
           <div className="flex items-center justify-between mb-3 shrink-0">
@@ -115,7 +115,7 @@ export default function ReceivePage() {
           </div>
 
           {/* ── Fixed card ── */}
-          <div className="flex-1 flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900/20 overflow-hidden min-h-0">
+          <div className="h-[520px] max-h-[calc(100dvh-88px)] flex flex-col rounded-2xl border border-zinc-800 bg-zinc-900/20 overflow-hidden">
 
             {/* gradient accent */}
             <div className="h-px w-full bg-gradient-to-r from-transparent via-violet-500/40 to-transparent shrink-0" />
