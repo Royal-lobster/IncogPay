@@ -4,13 +4,22 @@ import { useState } from "react";
 import { AlertTriangle, ChevronDown, Ghost, Wallet } from "lucide-react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { injected } from "wagmi/connectors";
-import { SUPPORTED_TOKENS, type SupportedToken } from "@/lib/wagmi";
+import {
+  SUPPORTED_CHAINS,
+  TOKENS_BY_CHAIN,
+  type SupportedChain,
+} from "@/lib/wagmi";
 import type { SendIntent } from "@/app/page";
 
 export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
   const [amount, setAmount] = useState("");
-  const [token, setToken] = useState<SupportedToken>(SUPPORTED_TOKENS[0]);
+  const [chain, setChain] = useState<SupportedChain>(SUPPORTED_CHAINS[0]);
+  const [chainOpen, setChainOpen] = useState(false);
   const [tokenOpen, setTokenOpen] = useState(false);
+
+  const tokens = TOKENS_BY_CHAIN[chain.id];
+  const [token, setToken] = useState(tokens[0]);
+
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
   const { disconnect } = useDisconnect();
@@ -21,6 +30,12 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
   const isLarge = numeric >= 10000;
   const valid = numeric > 0;
 
+  const handleChainChange = (c: SupportedChain) => {
+    setChain(c);
+    setToken(TOKENS_BY_CHAIN[c.id][0]);
+    setChainOpen(false);
+  };
+
   return (
     <div className="w-full max-w-md">
       {/* Logo / heading */}
@@ -30,16 +45,15 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
         </div>
         <h1 className="text-3xl font-bold tracking-tight mb-2">IncogPay</h1>
         <p className="text-zinc-400 text-sm leading-relaxed max-w-xs">
-          Send USDC privately on Arbitrum. The recipient won't know your wallet
-          address or balance.
+          Send crypto privately. The recipient won't know your wallet address or balance.
         </p>
       </div>
 
-      {/* Wallet connect — above amount, full row */}
+      {/* Wallet connect row */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Wallet size={13} className="text-zinc-500" />
-          <span className="text-xs text-zinc-500">
+        <div className="flex items-center gap-2 min-w-0">
+          <Wallet size={13} className="text-zinc-500 shrink-0" />
+          <span className="text-xs text-zinc-500 truncate">
             {isConnected && address
               ? `${address.slice(0, 6)}...${address.slice(-4)}`
               : "No wallet connected"}
@@ -48,22 +62,55 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
         {isConnected ? (
           <button
             onClick={() => disconnect()}
-            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors shrink-0 ml-2"
           >
             Disconnect
           </button>
         ) : (
           <button
             onClick={() => connect({ connector: injected() })}
-            className="text-xs font-medium rounded-full bg-white text-black px-3 py-1 hover:bg-zinc-200 transition-colors"
+            className="text-xs font-medium rounded-full bg-white text-black px-3 py-1 hover:bg-zinc-200 transition-colors shrink-0 ml-2"
           >
             Connect
           </button>
         )}
       </div>
 
-      {/* Amount input card */}
+      {/* Chain + Amount card */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 mb-3">
+
+        {/* Chain selector row */}
+        <div className="flex items-center justify-between mb-4 pb-4 border-b border-zinc-800">
+          <span className="text-xs font-medium text-zinc-500 uppercase tracking-widest">Network</span>
+          <div className="relative">
+            <button
+              onClick={() => { setChainOpen(!chainOpen); setTokenOpen(false); }}
+              className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:border-zinc-500 transition-colors whitespace-nowrap"
+            >
+              <span className="text-xs">{chain.icon}</span>
+              {chain.label}
+              <ChevronDown size={12} className="text-zinc-500" />
+            </button>
+            {chainOpen && (
+              <div className="absolute right-0 top-full mt-2 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-20 overflow-hidden w-40">
+                {SUPPORTED_CHAINS.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => handleChainChange(c)}
+                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2 ${
+                      c.id === chain.id ? "text-pink-400" : "text-zinc-300"
+                    }`}
+                  >
+                    <span className="text-xs">{c.icon}</span>
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Amount + token */}
         <label className="block text-xs font-medium text-zinc-500 uppercase tracking-widest mb-3">
           Amount
         </label>
@@ -76,19 +123,17 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
             className="min-w-0 flex-1 text-3xl font-semibold bg-transparent text-zinc-100 placeholder:text-zinc-700 focus:outline-none"
             min="0"
           />
-
-          {/* Token selector */}
           <div className="relative shrink-0">
             <button
-              onClick={() => setTokenOpen(!tokenOpen)}
+              onClick={() => { setTokenOpen(!tokenOpen); setChainOpen(false); }}
               className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-500 transition-colors whitespace-nowrap"
             >
               {token.symbol}
               <ChevronDown size={13} className="text-zinc-500" />
             </button>
             {tokenOpen && (
-              <div className="absolute right-0 top-full mt-2 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-10 overflow-hidden w-28">
-                {SUPPORTED_TOKENS.map((t) => (
+              <div className="absolute right-0 top-full mt-2 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-20 overflow-hidden w-28">
+                {tokens.map((t) => (
                   <button
                     key={t.symbol}
                     onClick={() => { setToken(t); setTokenOpen(false); }}
