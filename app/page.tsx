@@ -14,8 +14,10 @@ export default function Home() {
 
   return (
     <>
-      <main className="min-h-[100dvh] flex items-center justify-center px-6 py-12 bg-[#0a0a0a]">
-        <SendForm onSend={(i) => setIntent(i)} />
+      <main className="h-[100dvh] overflow-y-auto flex flex-col bg-[#0a0a0a]">
+        <div className="my-auto flex justify-center px-6 py-8">
+          <SendForm onSend={(i) => setIntent(i)} />
+        </div>
       </main>
       {intent && (
         <SendStepper intent={intent} onClose={() => setIntent(null)} />
