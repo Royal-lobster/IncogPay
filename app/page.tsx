@@ -10,7 +10,7 @@ import { SUPPORTED_CHAINS } from "@/lib/wagmi";
 
 export default function Home() {
   return (
-    <main className="min-h-[100dvh] flex flex-col justify-center bg-[#0a0a0a] px-5 py-8 relative overflow-x-hidden overflow-y-auto">
+    <main className="min-h-[100dvh] flex flex-col justify-center bg-[#0a0a0a] px-5 py-8 relative overflow-x-hidden">
 
       {/* ambient glows */}
       <div className="pointer-events-none absolute -top-24 -left-16 h-72 w-72 rounded-full bg-pink-500 opacity-[0.05] blur-3xl" />
