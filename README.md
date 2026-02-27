@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# IncogPay
 
-## Getting Started
+Private crypto payments powered by [RAILGUN](https://railgun.org). Send and receive USDC, USDT, WETH and more — the recipient only ever sees the RAILGUN relayer, never your real wallet address.
 
-First, run the development server:
+**Live:** [incogpay.vercel.app](https://incogpay.vercel.app)
+
+---
+
+## What it does
+
+**Send privately** — Shield funds into RAILGUN's private pool, wait ~1 hour for the on-chain privacy check (Proof of Innocence), then send to any address. The recipient's on-chain view shows the RAILGUN relayer as the sender, not your wallet.
+
+**Receive privately** — Sign a message from your wallet to derive a RAILGUN 0zk shielded address. Share it (or a pre-filled payment link) with whoever is paying you. They can't trace the 0zk address back to your real wallet.
+
+---
+
+## Chains & tokens
+
+| Chain | Tokens |
+|---|---|
+| Arbitrum | USDC, USDT, WETH |
+| Ethereum | USDC, USDT, DAI, WETH |
+| Polygon | USDC, USDT, WETH |
+| BNB Chain | USDC, USDT, WBNB |
+
+---
+
+## Fees
+
+- **Protocol fee:** 0.25% deducted at shield time (RAILGUN protocol, not us)
+- **Relayer fee:** ~$0.05–0.10 on Arbitrum (paid from shielded balance — no extra ETH needed for the send step)
+- **No markup.** We add nothing on top.
+
+---
+
+## Privacy model
+
+- Recipient sees funds arriving from the RAILGUN relayer contract — not your wallet
+- Sender's address never appears on-chain in relation to the recipient
+- Correlation risk: if the pool is quiet, exact amount + timing can narrow things down — use round numbers and wait the full hour
+- RAILGUN uses [Private Proofs of Innocence](https://docs.railgun.org/privacy-system/private-proofs-of-innocence) — funds are proven non-sanctioned before sending
+
+---
+
+## Stack
+
+- **Next.js** (static export, no backend)
+- **wagmi + viem** — wallet connection and contract interaction
+- **RAILGUN SDK** (`@railgun-community/wallet`) — shielding, ZK proof generation, relayer broadcast
+- **Phosphor Icons**, Geist Sans, Tailwind CSS
+
+---
+
+## Status
+
+UI is complete. RAILGUN SDK calls are stubbed with `// TODO` markers at:
+- `components/steps/ShieldStep.tsx` — approve + shield
+- `components/steps/MixingStep.tsx` — replace timer with PPOI polling
+- `components/steps/SendStep.tsx` — ZK proof generation + relayer broadcast
+- `app/receive/page.tsx` — `deriveShieldedAddress()` → `getRailgunAddress()`
+
+---
+
+## Run locally
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+No env vars required for the UI. Add `NEXT_PUBLIC_WC_PROJECT_ID` for WalletConnect support.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Built for personal use. Non-custodial, no backend, open source.

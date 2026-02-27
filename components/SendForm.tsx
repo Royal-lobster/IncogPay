@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CaretDown, Ghost, Timer, Wallet, Warning } from "@phosphor-icons/react";
+import { CaretDown, Timer, Wallet, Warning } from "@phosphor-icons/react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { SUPPORTED_CHAINS, TOKENS_BY_CHAIN, type SupportedChain } from "@/lib/wagmi";
@@ -36,17 +36,6 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
 
   return (
     <div className="w-full max-w-md">
-      {/* Logo / heading */}
-      <div className="flex flex-col items-center mb-6 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-pink-500/10 ring-1 ring-pink-500/20 mb-4">
-          <Ghost size={28} weight="duotone" className="text-pink-400" />
-        </div>
-        <h1 className="text-3xl font-bold tracking-tight mb-2">IncogPay</h1>
-        <p className="text-zinc-400 text-sm leading-relaxed max-w-xs">
-          Send crypto privately. The recipient won't know your wallet address or balance.
-        </p>
-      </div>
-
       {/* Wallet row */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
@@ -171,9 +160,8 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
       <button
         onClick={() => valid && onSend({ amount, token: token.symbol })}
         disabled={!valid}
-        className={`w-full py-3.5 rounded-full text-sm font-semibold transition-colors flex items-center justify-center gap-2 ${valid ? "bg-white text-black hover:bg-zinc-200" : "bg-zinc-800 text-zinc-600 cursor-not-allowed"}`}
+        className={`w-full py-3.5 rounded-full text-sm font-semibold transition-colors ${valid ? "bg-white text-black hover:bg-zinc-200" : "bg-zinc-800 text-zinc-600 cursor-not-allowed"}`}
       >
-        <Ghost size={15} weight="duotone" />
         Send Privately
       </button>
     </div>
