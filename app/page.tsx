@@ -13,7 +13,7 @@ export default function Home() {
   const [intent, setIntent] = useState<SendIntent | null>(null);
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-6 py-16 bg-[#0a0a0a]">
+    <main className="h-screen overflow-y-auto flex flex-col items-center justify-center px-6 py-8 bg-[#0a0a0a]">
       <SendForm onSend={(i) => setIntent(i)} />
       {intent && (
         <SendStepper intent={intent} onClose={() => setIntent(null)} />
