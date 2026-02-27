@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { AlertTriangle, ChevronDown, Ghost } from "lucide-react";
+import { useAccount, useConnect, useDisconnect } from "wagmi";
+import { injected } from "wagmi/connectors";
 import { SUPPORTED_TOKENS, type SupportedToken } from "@/lib/wagmi";
 import type { SendIntent } from "@/app/page";
 
@@ -9,6 +11,9 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
   const [amount, setAmount] = useState("");
   const [token, setToken] = useState<SupportedToken>(SUPPORTED_TOKENS[0]);
   const [tokenOpen, setTokenOpen] = useState(false);
+  const { address, isConnected } = useAccount();
+  const { connect } = useConnect();
+  const { disconnect } = useDisconnect();
 
   const numeric = parseFloat(amount) || 0;
   const fee = numeric * 0.0025;
@@ -18,10 +23,29 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
 
   return (
     <div className="w-full max-w-md">
+      {/* Wallet connect — top right of card area */}
+      <div className="flex justify-end mb-4">
+        {isConnected && address ? (
+          <button
+            onClick={() => disconnect()}
+            className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors border border-zinc-800 rounded-full px-3 py-1.5 hover:border-zinc-600"
+          >
+            {address.slice(0, 6)}...{address.slice(-4)}
+          </button>
+        ) : (
+          <button
+            onClick={() => connect({ connector: injected() })}
+            className="text-xs font-medium rounded-full bg-white text-black px-4 py-1.5 hover:bg-zinc-200 transition-colors"
+          >
+            Connect wallet
+          </button>
+        )}
+      </div>
+
       {/* Logo / heading */}
       <div className="flex flex-col items-center mb-10 text-center">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-500/10 ring-1 ring-violet-500/20 mb-4">
-          <Ghost size={26} className="text-violet-400" />
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-pink-500/10 ring-1 ring-pink-500/20 mb-4">
+          <Ghost size={26} className="text-pink-400" />
         </div>
         <h1 className="text-3xl font-bold tracking-tight mb-2">GhostPay</h1>
         <p className="text-zinc-400 text-sm leading-relaxed max-w-xs">
@@ -41,27 +65,27 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
-            className="flex-1 text-3xl font-semibold bg-transparent text-zinc-100 placeholder:text-zinc-700 focus:outline-none"
+            className="min-w-0 flex-1 text-3xl font-semibold bg-transparent text-zinc-100 placeholder:text-zinc-700 focus:outline-none"
             min="0"
           />
 
-          {/* Token selector */}
-          <div className="relative">
+          {/* Token selector — relative container constrains dropdown */}
+          <div className="relative shrink-0">
             <button
               onClick={() => setTokenOpen(!tokenOpen)}
-              className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-500 transition-colors"
+              className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-200 hover:border-zinc-500 transition-colors whitespace-nowrap"
             >
               {token.symbol}
               <ChevronDown size={13} className="text-zinc-500" />
             </button>
             {tokenOpen && (
-              <div className="absolute right-0 top-full mt-2 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-10 overflow-hidden min-w-28">
+              <div className="absolute right-0 top-full mt-2 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-10 overflow-hidden w-28">
                 {SUPPORTED_TOKENS.map((t) => (
                   <button
                     key={t.symbol}
                     onClick={() => { setToken(t); setTokenOpen(false); }}
                     className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-800 transition-colors ${
-                      t.symbol === token.symbol ? "text-violet-400" : "text-zinc-300"
+                      t.symbol === token.symbol ? "text-pink-400" : "text-zinc-300"
                     }`}
                   >
                     {t.symbol}
@@ -99,7 +123,7 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
 
       {/* Wait time notice */}
       <div className="rounded-xl border border-zinc-800 px-4 py-3 mb-6 flex gap-3">
-        <span className="text-zinc-600 text-xs mt-0.5">⏱</span>
+        <span className="text-zinc-600 text-xs mt-0.5 shrink-0">⏱</span>
         <p className="text-xs text-zinc-500">
           Requires ~1 hour mixing wait before funds reach recipient.
           You can cancel anytime and get funds back.

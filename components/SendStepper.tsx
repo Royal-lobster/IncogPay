@@ -45,9 +45,9 @@ export function SendStepper({ intent, onClose }: { intent: SendIntent; onClose: 
                 const done = curIdx > sIdx;
                 return (
                   <div key={s} className="flex items-center gap-3">
-                    {i > 0 && <div className={`w-6 h-px ${done ? "bg-violet-500" : "bg-zinc-800"}`} />}
+                    {i > 0 && <div className={`w-6 h-px ${done ? "bg-pink-500" : "bg-zinc-800"}`} />}
                     <span className={`text-xs font-medium transition-colors ${
-                      active ? "text-violet-400" : done ? "text-zinc-600" : "text-zinc-700"
+                      active ? "text-pink-400" : done ? "text-zinc-600" : "text-zinc-700"
                     }`}>
                       {STEP_LABELS[s]}
                     </span>

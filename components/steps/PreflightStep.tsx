@@ -50,10 +50,10 @@ export function PreflightStep({
       <div className="space-y-3 mb-5">
         {steps.map((s, i) => (
           <div key={i} className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/40 to-transparent" />
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-pink-500/40 to-transparent" />
             <div className="flex gap-4">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 ring-1 ring-violet-500/20">
-                <s.icon size={14} className="text-violet-400" />
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-pink-500/10 ring-1 ring-pink-500/20">
+                <s.icon size={14} className="text-pink-400" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between mb-0.5">

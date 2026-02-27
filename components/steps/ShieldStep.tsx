@@ -66,7 +66,7 @@ export function ShieldStep({
 
       {/* Summary */}
       <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 mb-3">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/40 to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-pink-500/40 to-transparent" />
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span className="text-zinc-400">You deposit</span>
@@ -99,7 +99,7 @@ export function ShieldStep({
         disabled={busy}
         className={`w-full py-3.5 rounded-full text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
           busy
-            ? "bg-violet-950 text-violet-400 cursor-not-allowed"
+            ? "bg-pink-950 text-pink-400 cursor-not-allowed"
             : "bg-white text-black hover:bg-zinc-200"
         }`}
       >

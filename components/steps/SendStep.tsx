@@ -98,7 +98,7 @@ export function SendStep({
             <span className="text-sm text-zinc-500">{intent.token}</span>
             <button
               onClick={() => setSendAmount(available.toFixed(2))}
-              className="text-[10px] font-medium text-violet-400 border border-violet-500/30 rounded-full px-2.5 py-1 hover:bg-violet-500/10 transition-colors uppercase tracking-widest"
+              className="text-[10px] font-medium text-pink-400 border border-pink-500/30 rounded-full px-2.5 py-1 hover:bg-pink-500/10 transition-colors uppercase tracking-widest"
             >
               Max
             </button>

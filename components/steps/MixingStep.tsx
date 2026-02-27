@@ -43,7 +43,7 @@ export function MixingStep({
 
       {/* Progress card */}
       <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 mb-4">
-        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/40 to-transparent" />
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-pink-500/40 to-transparent" />
 
         <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-medium text-zinc-500 uppercase tracking-widest">Progress</span>
@@ -53,7 +53,7 @@ export function MixingStep({
         {/* Bar */}
         <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
           <div
-            className="h-full rounded-full bg-violet-500 transition-all duration-1000"
+            className="h-full rounded-full bg-pink-500 transition-all duration-1000"
             style={{ width: `${pct}%` }}
           />
         </div>
@@ -69,7 +69,7 @@ export function MixingStep({
           href={`https://arbiscan.io/tx/${txHash}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-xs text-zinc-600 hover:text-violet-400 transition-colors mb-4"
+          className="flex items-center gap-1.5 text-xs text-zinc-600 hover:text-pink-400 transition-colors mb-4"
         >
           <ExternalLink size={11} />
           View deposit on Arbiscan
