@@ -66,7 +66,7 @@ export default function Home() {
   const accent = howTab === "send" ? "pink" : "violet";
 
   return (
-    <main className="bg-[#0a0a0a] px-5 py-12 relative overflow-x-hidden">
+    <main className="bg-[#0a0a0a] px-5 py-12 relative overflow-hidden">
 
       {/* ambient glows */}
       <div className="pointer-events-none absolute -top-24 -left-16 h-72 w-72 rounded-full bg-pink-500 opacity-[0.05] blur-3xl" />
