@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
+import { X } from "@phosphor-icons/react";
 import type { SendIntent } from "@/app/page";
 import { PreflightStep } from "./steps/PreflightStep";
 import { ShieldStep } from "./steps/ShieldStep";
@@ -61,7 +61,7 @@ export function SendStepper({ intent, onClose }: { intent: SendIntent; onClose: 
             </span>
           )}
           <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors">
-            <X size={16} />
+            <X size={16} weight="bold" />
           </button>
         </div>
 
