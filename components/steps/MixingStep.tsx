@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ExternalLink, ShieldCheck } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 
 const MIXING_MS = 60 * 60 * 1000; // 1 hour
 
-export function MixingStep({ txHash, onReady, onCancel }: {
+export function MixingStep({
+  txHash,
+  onReady,
+  onCancel,
+}: {
   txHash: string | null;
   onReady: () => void;
   onCancel: () => void;
@@ -24,6 +28,7 @@ export function MixingStep({ txHash, onReady, onCancel }: {
 
   const remaining = Math.max(0, MIXING_MS - elapsed);
   const pct = Math.min(100, (elapsed / MIXING_MS) * 100);
+
   const fmt = (ms: number) => {
     const s = Math.floor(ms / 1000);
     return `${Math.floor(s / 60)}m ${(s % 60).toString().padStart(2, "0")}s`;
@@ -31,26 +36,31 @@ export function MixingStep({ txHash, onReady, onCancel }: {
 
   return (
     <div>
-      <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-500/10 ring-1 ring-violet-500/20 mb-4">
-        <ShieldCheck size={22} className="text-violet-400" />
-      </div>
-
-      <h3 className="font-semibold text-zinc-100 mb-1">Funds are mixing</h3>
+      <h2 className="text-lg font-semibold tracking-tight mb-1">Mixing in private pool</h2>
       <p className="text-sm text-zinc-400 mb-6">
-        RAILGUN is running its on-chain privacy check. Your funds are safe in the pool.
+        RAILGUN is running its on-chain privacy check. Your funds are safe.
       </p>
 
-      {/* Progress bar */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 mb-4">
-        <div className="flex justify-between text-xs text-zinc-500 mb-2.5">
-          <span>Mixing progress</span>
-          <span className="text-zinc-400">{fmt(remaining)} remaining</span>
+      {/* Progress card */}
+      <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 mb-4">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/40 to-transparent" />
+
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-medium text-zinc-500 uppercase tracking-widest">Progress</span>
+          <span className="text-sm font-medium text-zinc-300">{fmt(remaining)} remaining</span>
         </div>
-        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+
+        {/* Bar */}
+        <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
           <div
-            className="h-full bg-violet-500 rounded-full transition-all duration-1000"
+            className="h-full rounded-full bg-violet-500 transition-all duration-1000"
             style={{ width: `${pct}%` }}
           />
+        </div>
+
+        <div className="flex justify-between text-[10px] text-zinc-700 mt-2">
+          <span>0m</span>
+          <span>60m</span>
         </div>
       </div>
 
@@ -66,9 +76,9 @@ export function MixingStep({ txHash, onReady, onCancel }: {
         </a>
       )}
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/30 px-4 py-3">
-        <p className="text-xs text-zinc-600">
-          You can close this tab and come back later — progress is saved locally in your browser.
+      <div className="rounded-xl border border-zinc-800 px-4 py-3">
+        <p className="text-xs text-zinc-500">
+          You can close this tab and come back — progress is saved locally. Cancel below to return funds to your wallet.
         </p>
       </div>
     </div>

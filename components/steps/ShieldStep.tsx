@@ -3,19 +3,23 @@
 import { useState } from "react";
 import { useAccount, useConnect } from "wagmi";
 import { injected } from "wagmi/connectors";
-import { Loader2 } from "lucide-react";
+import { Loader2, ShieldCheck } from "lucide-react";
 import type { SendIntent } from "@/app/page";
 
-type ShieldStatus = "idle" | "connecting" | "approving" | "shielding" | "done" | "error";
+type Status = "idle" | "connecting" | "approving" | "shielding" | "done" | "error";
 
-export function ShieldStep({ intent, onSuccess, onCancel }: {
+export function ShieldStep({
+  intent,
+  onSuccess,
+  onCancel,
+}: {
   intent: SendIntent;
   onSuccess: (txHash: string) => void;
   onCancel: () => void;
 }) {
   const { isConnected } = useAccount();
   const { connect } = useConnect();
-  const [status, setStatus] = useState<ShieldStatus>("idle");
+  const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
 
   const fee = parseFloat(intent.amount) * 0.0025;
@@ -27,7 +31,6 @@ export function ShieldStep({ intent, onSuccess, onCancel }: {
       if (!isConnected) {
         setStatus("connecting");
         connect({ connector: injected() });
-        return;
       }
       setStatus("approving");
       // TODO: approve ERC-20 spend via wagmi writeContract
@@ -35,6 +38,7 @@ export function ShieldStep({ intent, onSuccess, onCancel }: {
 
       setStatus("shielding");
       // TODO: RAILGUN SDK shield call
+      // const tx = await shieldTokens(...)
       await new Promise((r) => setTimeout(r, 2000));
 
       onSuccess("0xmocktxhash");
@@ -44,9 +48,9 @@ export function ShieldStep({ intent, onSuccess, onCancel }: {
     }
   };
 
-  const btnLabel: Record<ShieldStatus, string> = {
-    idle: isConnected ? "Approve & Shield" : "Connect Wallet",
-    connecting: "Connecting...",
+  const label: Record<Status, string> = {
+    idle: "Deposit into pool",
+    connecting: "Connecting wallet...",
     approving: "Approve in wallet...",
     shielding: "Shielding funds...",
     done: "Shielded",
@@ -55,31 +59,33 @@ export function ShieldStep({ intent, onSuccess, onCancel }: {
 
   return (
     <div>
+      <h2 className="text-lg font-semibold tracking-tight mb-1">Deposit into private pool</h2>
       <p className="text-sm text-zinc-400 mb-6">
-        Deposit your funds into RAILGUN's private pool. This is the only public transaction — everything after is private.
+        Approve and shield your funds. This is the only step that uses your public wallet.
       </p>
 
       {/* Summary */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 mb-3 space-y-2.5">
-        <div className="flex justify-between text-sm">
-          <span className="text-zinc-500">You deposit</span>
-          <span className="text-zinc-100 font-medium">{intent.amount} {intent.token}</span>
-        </div>
-        <div className="flex justify-between text-xs">
-          <span className="text-zinc-600">Protocol fee (0.25%)</span>
-          <span className="text-zinc-600">−{fee.toFixed(2)} {intent.token}</span>
-        </div>
-        <div className="h-px bg-zinc-800" />
-        <div className="flex justify-between text-sm">
-          <span className="text-zinc-400">Private balance</span>
-          <span className="text-emerald-400 font-medium">+{net.toFixed(2)} {intent.token}</span>
+      <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 mb-3">
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/40 to-transparent" />
+        <div className="space-y-2">
+          <div className="flex justify-between text-sm">
+            <span className="text-zinc-400">You deposit</span>
+            <span className="text-zinc-100 font-medium">{intent.amount} {intent.token}</span>
+          </div>
+          <div className="flex justify-between text-xs">
+            <span className="text-zinc-600">Protocol fee (0.25%)</span>
+            <span className="text-zinc-600">−{fee.toFixed(2)} {intent.token}</span>
+          </div>
+          <div className="h-px bg-zinc-800 my-1" />
+          <div className="flex justify-between text-sm">
+            <span className="text-zinc-400">Private balance</span>
+            <span className="text-emerald-400 font-medium">+{net.toFixed(2)} {intent.token}</span>
+          </div>
         </div>
       </div>
 
       <div className="rounded-xl border border-zinc-800 px-4 py-3 mb-6">
-        <p className="text-xs text-zinc-600">
-          You'll also need ~$0.10 of ETH on Arbitrum for the deposit gas fee.
-        </p>
+        <p className="text-xs text-zinc-500">You'll also need ~$0.10 ETH on Arbitrum for gas.</p>
       </div>
 
       {error && (
@@ -97,8 +103,8 @@ export function ShieldStep({ intent, onSuccess, onCancel }: {
             : "bg-white text-black hover:bg-zinc-200"
         }`}
       >
-        {busy && <Loader2 size={14} className="animate-spin" />}
-        {btnLabel[status]}
+        {busy ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+        {label[status]}
       </button>
     </div>
   );
