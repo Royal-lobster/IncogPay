@@ -2,17 +2,20 @@
 
 import { useState } from "react";
 import { CheckCircle, X } from "@phosphor-icons/react";
+import { useAccount } from "wagmi";
 import type { SendIntent } from "@/lib/types";
+import { ConnectStep } from "./steps/ConnectStep";
 import { AmountStep } from "./steps/AmountStep";
 import { PreflightStep } from "./steps/PreflightStep";
 import { ShieldStep } from "./steps/ShieldStep";
 import { MixingStep } from "./steps/MixingStep";
 import { SendStep } from "./steps/SendStep";
 
-type Step = "amount" | "preflight" | "shield" | "mixing" | "send" | "done";
+type Step = "connect" | "amount" | "preflight" | "shield" | "mixing" | "send" | "done";
 
 const PROGRESS_STEPS: Step[] = ["shield", "mixing", "send"];
 const STEP_LABELS: Record<Step, string> = {
+  connect: "Connect",
   amount: "Amount",
   preflight: "Overview",
   shield: "Shield",
@@ -22,7 +25,8 @@ const STEP_LABELS: Record<Step, string> = {
 };
 
 export function SendStepper({ onClose }: { onClose: () => void }) {
-  const [step, setStep] = useState<Step>("amount");
+  const { isConnected } = useAccount();
+  const [step, setStep] = useState<Step>(isConnected ? "amount" : "connect");
   const [intent, setIntent] = useState<SendIntent | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
@@ -61,7 +65,7 @@ export function SendStepper({ onClose }: { onClose: () => void }) {
             </div>
           ) : (
             <span className="text-sm font-medium text-zinc-300">
-              {step === "done" ? "Complete" : step === "amount" ? "Send privately" : "Overview"}
+              {step === "done" ? "Complete" : step === "connect" ? "Connect wallet" : step === "amount" ? "Send privately" : "Overview"}
             </span>
           )}
           <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors ml-4">
@@ -71,6 +75,9 @@ export function SendStepper({ onClose }: { onClose: () => void }) {
 
         {/* Content */}
         <div className="p-6">
+          {step === "connect" && (
+            <ConnectStep onConnected={() => setStep("amount")} onCancel={onClose} />
+          )}
           {step === "amount" && (
             <AmountStep
               onNext={(i) => { setIntent(i); setStep("preflight"); }}
@@ -106,7 +113,7 @@ export function SendStepper({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Cancel footer */}
-        {step !== "done" && step !== "amount" && step !== "preflight" && (
+        {step !== "done" && step !== "connect" && step !== "amount" && step !== "preflight" && (
           <div className="border-t border-zinc-800/60 px-6 py-3 flex justify-center">
             <button onClick={handleCancel} className="text-xs text-zinc-600 hover:text-red-400 transition-colors">
               Cancel & return funds to wallet

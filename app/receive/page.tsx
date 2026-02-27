@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import {
@@ -8,7 +8,7 @@ import {
   Wallet, CircleNotch, ShieldCheck,
 } from "@phosphor-icons/react";
 import { useAccount, useConnect, useDisconnect, useSignMessage } from "wagmi";
-import { injected } from "wagmi/connectors";
+import { injected, walletConnect } from "wagmi/connectors";
 import { SUPPORTED_CHAINS, TOKENS_BY_CHAIN, type SupportedChain } from "@/lib/wagmi";
 import { ChainIcon } from "@/components/ChainIcon";
 import { TokenIcon } from "@/components/TokenIcon";
@@ -19,7 +19,7 @@ function deriveShieldedAddress(sig: string): string {
   return `0zk1qy${hash.slice(0, 8)}...${hash.slice(-8)}demo`;
 }
 
-type Step = "idle" | "signing" | "ready";
+type Step = "idle" | "connect" | "signing" | "ready";
 
 const HOW_IT_WORKS = [
   { icon: Wallet,      text: "Connect your wallet — nothing is sent, just a signature." },
@@ -51,9 +51,25 @@ export default function ReceivePage() {
     setChainOpen(false);
   };
 
+  // Auto-sign after wallet connects from the connect step
+  useEffect(() => {
+    if (isConnected && step === "connect") triggerSign();
+  }, [isConnected, step]); // eslint-disable-line
+
+  const triggerSign = async () => {
+    try {
+      setStep("signing");
+      const sig = await signMessageAsync({ message: "Generate my IncogPay shielded receive address" });
+      setShieldedAddr(deriveShieldedAddress(sig));
+      setStep("ready");
+    } catch {
+      setStep("idle");
+    }
+  };
+
   const handleGenerate = async () => {
     try {
-      if (!isConnected) { connect({ connector: injected() }); return; }
+      if (!isConnected) { setStep("connect"); return; }
       setStep("signing");
       const sig = await signMessageAsync({
         message: "Generate my IncogPay shielded receive address",
@@ -101,10 +117,10 @@ export default function ReceivePage() {
             </p>
           </div>
 
-          {step !== "ready" ? (
+          {step === "idle" && (
             <>
-              {/* How it works — violet accent line */}
-              <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 mb-3">
+              {/* How it works */}
+              <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 mb-5">
                 <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/40 to-transparent" />
                 <ul className="space-y-3">
                   {HOW_IT_WORKS.map((item, i) => (
@@ -115,38 +131,61 @@ export default function ReceivePage() {
                   ))}
                 </ul>
               </div>
-
-              {/* Wallet row */}
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 mb-5 flex items-center justify-between">
-                <div className="flex items-center gap-2 min-w-0">
-                  <Wallet size={14} weight="duotone" className="text-zinc-500 shrink-0" />
-                  <span className="text-xs text-zinc-500 truncate">
-                    {isConnected && address ? `${address.slice(0, 6)}...${address.slice(-4)}` : "No wallet connected"}
-                  </span>
-                </div>
-                {isConnected ? (
-                  <button onClick={() => disconnect()} className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors shrink-0 ml-2">
-                    Disconnect
-                  </button>
-                ) : (
-                  <button onClick={() => connect({ connector: injected() })} className="text-xs font-medium rounded-full bg-white text-black px-3 py-1 hover:bg-zinc-200 transition-colors shrink-0 ml-2">
-                    Connect
-                  </button>
-                )}
-              </div>
-
               <button
                 onClick={handleGenerate}
-                disabled={busy}
-                className={`w-full py-3.5 rounded-full text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${busy ? "bg-zinc-800 text-zinc-600 cursor-not-allowed" : "bg-white text-black hover:bg-zinc-200"}`}
+                className="w-full py-3.5 rounded-full text-sm font-semibold bg-white text-black hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2"
               >
-                {busy
-                  ? <><CircleNotch size={14} className="animate-spin" />Signing in wallet…</>
-                  : <><QrCode size={15} weight="duotone" />{isConnected ? "Generate Receive Address" : "Connect & Generate"}</>
-                }
+                <QrCode size={15} weight="duotone" />
+                Generate Receive Address
               </button>
             </>
-          ) : (
+          )}
+
+          {step === "connect" && (
+            <>
+              <h2 className="text-lg font-semibold tracking-tight mb-1">Connect your wallet</h2>
+              <p className="text-sm text-zinc-400 mb-6">Nothing is sent — just need to sign a message to derive your address.</p>
+              <div className="space-y-2 mb-5">
+                <button
+                  onClick={() => connect({ connector: injected() })}
+                  className="w-full flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-4 hover:border-zinc-600 transition-colors text-left"
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 ring-1 ring-orange-500/20">
+                    <Wallet size={18} weight="duotone" className="text-orange-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-zinc-200">Browser wallet</p>
+                    <p className="text-xs text-zinc-500">MetaMask, Rabby, Coinbase…</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => connect({ connector: walletConnect({ projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay" }) })}
+                  className="w-full flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-4 hover:border-zinc-600 transition-colors text-left"
+                >
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
+                    <Wallet size={18} weight="duotone" className="text-blue-400" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-zinc-200">WalletConnect</p>
+                    <p className="text-xs text-zinc-500">Rainbow, Trust, Ledger Live…</p>
+                  </div>
+                </button>
+              </div>
+              <button onClick={() => setStep("idle")} className="w-full py-3 rounded-full border border-zinc-800 text-sm text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors">
+                Back
+              </button>
+            </>
+          )}
+
+          {step === "signing" && (
+            <div className="flex flex-col items-center py-6 gap-3">
+              <CircleNotch size={28} className="animate-spin text-violet-400" />
+              <p className="text-sm text-zinc-400">Check your wallet and sign the message…</p>
+              <button onClick={() => setStep("idle")} className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors mt-2">Cancel</button>
+            </div>
+          )}
+
+          {step === "ready" && (
             <>
               {/* QR + address card */}
               <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 mb-3">

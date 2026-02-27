@@ -1,8 +1,6 @@
 "use client";
 
-import { Ghost, ShieldCheck, Clock, PaperPlaneTilt, Wallet } from "@phosphor-icons/react";
-import { useAccount, useConnect, useDisconnect } from "wagmi";
-import { injected } from "wagmi/connectors";
+import { Ghost, ShieldCheck, Clock, PaperPlaneTilt } from "@phosphor-icons/react";
 
 const HOW_IT_WORKS = [
   { icon: ShieldCheck,     text: "Approve and shield your funds into RAILGUN's private pool." },
@@ -11,10 +9,6 @@ const HOW_IT_WORKS = [
 ];
 
 export function SendForm({ onSend }: { onSend: () => void }) {
-  const { address, isConnected } = useAccount();
-  const { connect } = useConnect();
-  const { disconnect } = useDisconnect();
-
   return (
     <div className="w-full max-w-md">
 
@@ -40,27 +34,6 @@ export function SendForm({ onSend }: { onSend: () => void }) {
             </li>
           ))}
         </ul>
-      </div>
-
-      {/* Wallet row */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 mb-5 flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
-          <Wallet size={14} weight="duotone" className="text-zinc-500 shrink-0" />
-          <span className="text-xs text-zinc-500 truncate">
-            {isConnected && address
-              ? `${address.slice(0, 6)}...${address.slice(-4)}`
-              : "No wallet connected"}
-          </span>
-        </div>
-        {isConnected ? (
-          <button onClick={() => disconnect()} className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors shrink-0 ml-2">
-            Disconnect
-          </button>
-        ) : (
-          <button onClick={() => connect({ connector: injected() })} className="text-xs font-medium rounded-full bg-white text-black px-3 py-1 hover:bg-zinc-200 transition-colors shrink-0 ml-2">
-            Connect
-          </button>
-        )}
       </div>
 
       {/* CTA */}
