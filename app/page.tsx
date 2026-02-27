@@ -1,127 +1,120 @@
 "use client";
 
 import Link from "next/link";
-import { Ghost, PaperPlaneTilt, QrCode, ShieldCheck, Clock, ArrowRight, Eye, EyeSlash } from "@phosphor-icons/react";
-
-const SEND_FEATURES = [
-  { icon: EyeSlash,     text: "Recipient sees RAILGUN relayer — not your wallet" },
-  { icon: ShieldCheck,  text: "Funds mix in RAILGUN's private pool for ~1 hour" },
-  { icon: PaperPlaneTilt, text: "USDC, USDT, WETH across 4 chains" },
-];
-
-const RECEIVE_FEATURES = [
-  { icon: QrCode,      text: "Generate a 0zk address from your wallet signature" },
-  { icon: EyeSlash,   text: "Sender has no way to trace back to your real wallet" },
-  { icon: ArrowRight, text: "Share a link — pre-fill amount, token, and chain" },
-];
-
-function FeatureCard({
-  href,
-  icon: Icon,
-  title,
-  subtitle,
-  features,
-  cta,
-  accent,
-}: {
-  href: string;
-  icon: React.ElementType;
-  title: string;
-  subtitle: string;
-  features: { icon: React.ElementType; text: string }[];
-  cta: string;
-  accent: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6 flex flex-col gap-5 hover:border-zinc-600 transition-colors"
-    >
-      {/* Top accent line */}
-      <div className={`absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent ${accent} to-transparent`} />
-
-      {/* Icon + title */}
-      <div className="flex items-start gap-4">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-pink-500/10 ring-1 ring-pink-500/20">
-          <Icon size={22} weight="duotone" className="text-pink-400" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
-          <p className="text-sm text-zinc-400 mt-0.5">{subtitle}</p>
-        </div>
-      </div>
-
-      {/* Feature list */}
-      <ul className="space-y-3">
-        {features.map((f, i) => (
-          <li key={i} className="flex items-start gap-3">
-            <f.icon size={14} weight="duotone" className="text-zinc-500 mt-0.5 shrink-0" />
-            <span className="text-xs text-zinc-400 leading-relaxed">{f.text}</span>
-          </li>
-        ))}
-      </ul>
-
-      {/* CTA */}
-      <div className="flex items-center gap-2 text-sm font-medium text-zinc-300 group-hover:text-white transition-colors mt-auto pt-2 border-t border-zinc-800">
-        {cta}
-        <ArrowRight size={14} weight="bold" className="transition-transform group-hover:translate-x-0.5" />
-      </div>
-    </Link>
-  );
-}
+import {
+  Ghost, PaperPlaneTilt, QrCode, ArrowRight,
+  ShieldCheck, EyeSlash,
+} from "@phosphor-icons/react";
+import { ChainIcon } from "@/components/ChainIcon";
+import { SUPPORTED_CHAINS } from "@/lib/wagmi";
 
 export default function Home() {
   return (
-    <main className="h-[100dvh] overflow-y-auto flex flex-col bg-[#0a0a0a]">
-      <div className="my-auto px-6 py-12">
+    <main className="h-[100dvh] flex flex-col justify-center bg-[#0a0a0a] px-5 py-8 relative overflow-hidden">
+
+      {/* ambient glows */}
+      <div className="pointer-events-none absolute -top-24 -left-16 h-72 w-72 rounded-full bg-pink-500 opacity-[0.05] blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-violet-500 opacity-[0.05] blur-3xl" />
+
+      <div className="relative w-full max-w-sm mx-auto flex flex-col gap-7">
 
         {/* Hero */}
-        <div className="flex flex-col items-center text-center mb-10 max-w-sm mx-auto">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-pink-500/10 ring-1 ring-pink-500/20 mb-5">
-            <Ghost size={32} weight="duotone" className="text-pink-400" />
+        <div>
+          {/* Logo badge */}
+          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 mb-5">
+            <Ghost size={13} weight="duotone" className="text-pink-400" />
+            <span className="text-xs font-semibold text-zinc-300 tracking-tight">IncogPay</span>
           </div>
-          <h1 className="text-4xl font-bold tracking-tight mb-3">IncogPay</h1>
-          <p className="text-zinc-400 text-sm leading-relaxed">
-            Private crypto payments on Arbitrum, Ethereum, Polygon and BNB.
-            Powered by <span className="text-zinc-200">RAILGUN</span> — the same protocol Vitalik uses.
+
+          <h1 className="text-[2.6rem] font-bold tracking-tight leading-[1.1] mb-3 text-zinc-50">
+            Private crypto<br />payments.
+          </h1>
+
+          <p className="text-sm text-zinc-500 leading-relaxed mb-4">
+            Send and receive without revealing your wallet.{" "}
+            <span className="text-zinc-300">Powered by RAILGUN</span> — the same
+            zero-knowledge protocol Vitalik uses.
           </p>
-        </div>
 
-        {/* Cards */}
-        <div className="grid gap-4 max-w-sm mx-auto">
-          <FeatureCard
-            href="/send"
-            icon={PaperPlaneTilt}
-            title="Send Privately"
-            subtitle="Pay someone without revealing your wallet."
-            features={SEND_FEATURES}
-            cta="Start sending"
-            accent="via-pink-500/40"
-          />
-          <FeatureCard
-            href="/receive"
-            icon={QrCode}
-            title="Receive Privately"
-            subtitle="Get paid without exposing your address."
-            features={RECEIVE_FEATURES}
-            cta="Generate receive link"
-            accent="via-violet-500/40"
-          />
-        </div>
-
-        {/* Footer note */}
-        <div className="flex flex-col items-center mt-10 gap-2">
-          <div className="flex items-center gap-2">
-            <Eye size={12} className="text-zinc-700" />
-            <p className="text-[11px] text-zinc-700">Non-custodial · No backend · Open source</p>
+          {/* Supported chains */}
+          <div className="flex items-center gap-1.5">
+            {SUPPORTED_CHAINS.map((c) => (
+              <div key={c.id} title={c.label}
+                className="flex h-6 w-6 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900">
+                <ChainIcon chainId={c.id} size={14} />
+              </div>
+            ))}
+            <span className="text-[11px] text-zinc-600 ml-1">4 chains</span>
           </div>
-          <a
-            href="https://github.com/Royal-lobster/IncogPay"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[11px] text-zinc-700 hover:text-zinc-500 transition-colors"
-          >
-            github.com/Royal-lobster/IncogPay
+        </div>
+
+        {/* Action cards */}
+        <div className="grid grid-cols-2 gap-3">
+
+          {/* Send */}
+          <Link href="/send"
+            className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 flex flex-col gap-4 hover:border-pink-800/50 hover:bg-pink-950/10 transition-all duration-200">
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-pink-500/50 to-transparent" />
+
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-pink-500/10 ring-1 ring-pink-500/20">
+              <PaperPlaneTilt size={17} weight="duotone" className="text-pink-400" />
+            </div>
+
+            <div className="flex-1">
+              <h2 className="text-sm font-semibold text-zinc-100 mb-1">Send</h2>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Pay without revealing your wallet address
+              </p>
+            </div>
+
+            <div className="flex items-center gap-1 text-xs font-medium text-zinc-600 group-hover:text-pink-400 transition-colors">
+              Send privately
+              <ArrowRight size={11} weight="bold" className="transition-transform group-hover:translate-x-0.5" />
+            </div>
+          </Link>
+
+          {/* Receive */}
+          <Link href="/receive"
+            className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/50 p-4 flex flex-col gap-4 hover:border-violet-800/50 hover:bg-violet-950/10 transition-all duration-200">
+            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/50 to-transparent" />
+
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-500/10 ring-1 ring-violet-500/20">
+              <QrCode size={17} weight="duotone" className="text-violet-400" />
+            </div>
+
+            <div className="flex-1">
+              <h2 className="text-sm font-semibold text-zinc-100 mb-1">Receive</h2>
+              <p className="text-xs text-zinc-500 leading-relaxed">
+                Get paid without exposing your real address
+              </p>
+            </div>
+
+            <div className="flex items-center gap-1 text-xs font-medium text-zinc-600 group-hover:text-violet-400 transition-colors">
+              Get address
+              <ArrowRight size={11} weight="bold" className="transition-transform group-hover:translate-x-0.5" />
+            </div>
+          </Link>
+        </div>
+
+        {/* Privacy proof row */}
+        <div className="rounded-xl border border-zinc-800/60 bg-zinc-900/30 px-4 py-3 flex items-center gap-3">
+          <ShieldCheck size={13} weight="duotone" className="text-emerald-500 shrink-0" />
+          <p className="text-xs text-zinc-500 leading-relaxed flex-1">
+            ZK proofs on-chain — recipient sees the{" "}
+            <span className="text-zinc-300">RAILGUN relayer</span>, never your wallet.
+          </p>
+          <EyeSlash size={13} weight="duotone" className="text-zinc-700 shrink-0" />
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-center gap-3">
+          <span className="text-[10px] text-zinc-700">Non-custodial</span>
+          <span className="h-3 w-px bg-zinc-800" />
+          <span className="text-[10px] text-zinc-700">No backend</span>
+          <span className="h-3 w-px bg-zinc-800" />
+          <a href="https://github.com/Royal-lobster/IncogPay" target="_blank" rel="noopener noreferrer"
+            className="text-[10px] text-zinc-700 hover:text-zinc-400 transition-colors">
+            Open source ↗
           </a>
         </div>
       </div>
