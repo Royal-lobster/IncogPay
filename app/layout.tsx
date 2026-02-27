@@ -7,9 +7,20 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "IncogPay — Private USDC Transfers",
+  metadataBase: new URL(
+    process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000"
+  ),
+  title: "IncogPay — Private crypto payments",
   description:
-    "Send USDC privately on Arbitrum. No wallet address revealed. Powered by RAILGUN.",
+    "Send and receive crypto without revealing your wallet. Zero-knowledge proofs on-chain via RAILGUN. Non-custodial, no backend.",
+  twitter: {
+    card: "summary_large_image",
+    title: "IncogPay — Private crypto payments",
+    description:
+      "Send and receive without revealing your wallet. Powered by RAILGUN zero-knowledge proofs.",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
