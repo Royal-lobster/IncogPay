@@ -10,27 +10,27 @@ import { SUPPORTED_CHAINS } from "@/lib/wagmi";
 
 export default function Home() {
   return (
-    <main className="h-[100dvh] flex flex-col justify-center bg-[#0a0a0a] px-5 py-8 relative overflow-hidden">
+    <main className="min-h-[100dvh] flex flex-col justify-center bg-[#0a0a0a] px-5 py-8 relative overflow-y-auto">
 
       {/* ambient glows */}
       <div className="pointer-events-none absolute -top-24 -left-16 h-72 w-72 rounded-full bg-pink-500 opacity-[0.05] blur-3xl" />
       <div className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-violet-500 opacity-[0.05] blur-3xl" />
 
-      <div className="relative w-full max-w-sm mx-auto flex flex-col gap-7">
+      <div className="relative w-full max-w-sm mx-auto flex flex-col gap-5 sm:gap-7">
 
         {/* Hero */}
         <div>
           {/* Logo badge */}
-          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 mb-5">
+          <div className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/60 px-3 py-1.5 mb-4">
             <Ghost size={13} weight="duotone" className="text-pink-400" />
             <span className="text-xs font-semibold text-zinc-300 tracking-tight">IncogPay</span>
           </div>
 
-          <h1 className="text-[2.6rem] font-bold tracking-tight leading-[1.1] mb-3 text-zinc-50">
+          <h1 className="text-[2rem] sm:text-[2.6rem] font-bold tracking-tight leading-[1.1] mb-2 sm:mb-3 text-zinc-50">
             Private crypto<br />payments.
           </h1>
 
-          <p className="text-sm text-zinc-500 leading-relaxed mb-4">
+          <p className="text-sm text-zinc-500 leading-relaxed mb-3 sm:mb-4">
             Send and receive without revealing your wallet.{" "}
             <span className="text-zinc-300">Powered by RAILGUN</span> — the same
             zero-knowledge protocol Vitalik uses.
