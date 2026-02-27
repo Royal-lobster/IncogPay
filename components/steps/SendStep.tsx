@@ -31,7 +31,7 @@ export function SendStep({ intent, onSuccess, onCancel }: { intent: SendIntent; 
     }
   };
 
-  const label: Record<Status, string> = { idle: "Confirm Send", proving: "Generating ZK proof...", broadcasting: "Broadcasting...", done: "Sent ✓", error: "Try again" };
+  const label: Record<Status, string> = { idle: "Confirm Send", proving: "Generating ZK proof...", broadcasting: "Broadcasting...", done: "Sent", error: "Try again" };
 
   return (
     <div>

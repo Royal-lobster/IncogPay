@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { CaretDown, Ghost, Wallet, Warning } from "@phosphor-icons/react";
+import { CaretDown, Ghost, Timer, Wallet, Warning } from "@phosphor-icons/react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { SUPPORTED_CHAINS, TOKENS_BY_CHAIN, type SupportedChain } from "@/lib/wagmi";
@@ -159,7 +159,7 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
 
       {/* Wait notice */}
       <div className="rounded-xl border border-zinc-800 px-4 py-3 mb-6 flex gap-3">
-        <span className="text-zinc-600 text-xs mt-0.5 shrink-0">⏱</span>
+        <Timer size={13} weight="duotone" className="text-zinc-600 mt-0.5 shrink-0" />
         <p className="text-xs text-zinc-500">
           Requires ~1 hour mixing wait before funds reach recipient. You can cancel anytime and get funds back.
         </p>

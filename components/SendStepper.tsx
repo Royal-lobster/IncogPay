@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "@phosphor-icons/react";
+import { CheckCircle, X } from "@phosphor-icons/react";
 import type { SendIntent } from "@/app/page";
 import { PreflightStep } from "./steps/PreflightStep";
 import { ShieldStep } from "./steps/ShieldStep";
@@ -82,7 +82,7 @@ export function SendStepper({ intent, onClose }: { intent: SendIntent; onClose: 
           {step === "done" && (
             <div className="py-4 text-center">
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 ring-1 ring-emerald-500/20 mx-auto mb-4">
-                <span className="text-2xl">✓</span>
+                <CheckCircle size={28} weight="duotone" className="text-emerald-400" />
               </div>
               <p className="font-semibold text-zinc-100 mb-1">Transfer complete</p>
               <p className="text-sm text-zinc-500 mb-6 max-w-xs mx-auto">
