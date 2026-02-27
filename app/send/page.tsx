@@ -42,7 +42,6 @@ export default function SendPage() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
-  // advance to form when wallet connects
   useEffect(() => {
     if (isConnected && phase === "connect") setPhase("form");
   }, [isConnected]); // eslint-disable-line
@@ -52,11 +51,11 @@ export default function SendPage() {
 
   return (
     <>
-      <main className="h-[100dvh] overflow-y-auto flex flex-col bg-[#0a0a0a]">
-        <div className="my-auto px-6 py-8">
+      <main className="min-h-[100dvh] flex flex-col bg-[#0a0a0a]">
+        <div className="flex-1 flex flex-col justify-center px-6 py-5">
 
           {/* Top nav */}
-          <div className="flex items-center justify-between mb-8 w-full max-w-md mx-auto">
+          <div className="flex items-center justify-between mb-5 w-full max-w-md mx-auto">
             <Link
               href="/"
               className="inline-flex items-center gap-1.5 text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
@@ -80,7 +79,7 @@ export default function SendPage() {
 
             {/* Progress bar — shield / mixing / send */}
             {isProgress && (
-              <div className="flex items-center gap-4 mb-8">
+              <div className="flex items-center gap-4 mb-6">
                 {PROGRESS_PHASES.map((s, i) => {
                   const sIdx = PROGRESS_PHASES.indexOf(s);
                   const active = phase === s;
@@ -101,11 +100,11 @@ export default function SendPage() {
 
             {/* Page header — connect / form / preflight */}
             {(phase === "connect" || phase === "form" || phase === "preflight") && (
-              <div className="flex flex-col items-center mb-6 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-pink-500/10 ring-1 ring-pink-500/20 mb-4">
-                  <Ghost size={28} weight="duotone" className="text-pink-400" />
+              <div className="flex flex-col items-center mb-4 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-pink-500/10 ring-1 ring-pink-500/20 mb-3">
+                  <Ghost size={24} weight="duotone" className="text-pink-400" />
                 </div>
-                <h1 className="text-3xl font-bold tracking-tight mb-2">Send Privately</h1>
+                <h1 className="text-2xl font-bold tracking-tight mb-1.5">Send Privately</h1>
                 <p className="text-zinc-400 text-sm leading-relaxed max-w-xs">
                   The recipient only sees the RAILGUN relayer — not your wallet address or balance.
                 </p>
@@ -115,12 +114,12 @@ export default function SendPage() {
             {/* ── connect ── */}
             {phase === "connect" && (
               <>
-                <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 mb-5">
+                <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 mb-4">
                   <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-pink-500/40 to-transparent" />
-                  <ul className="space-y-3">
+                  <ul className="space-y-2">
                     {HOW_IT_WORKS.map((item, i) => (
                       <li key={i} className="flex items-start gap-3">
-                        <item.icon size={14} weight="duotone" className="text-pink-400 mt-0.5 shrink-0" />
+                        <item.icon size={13} weight="duotone" className="text-pink-400 mt-0.5 shrink-0" />
                         <span className="text-xs text-zinc-400">{item.text}</span>
                       </li>
                     ))}
@@ -134,10 +133,10 @@ export default function SendPage() {
                   <button
                     onClick={() => connect({ connector: injected() })}
                     disabled={isPending}
-                    className="w-full flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-4 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
+                    className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 ring-1 ring-orange-500/20">
-                      <Wallet size={18} weight="duotone" className="text-orange-400" />
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 ring-1 ring-orange-500/20">
+                      <Wallet size={16} weight="duotone" className="text-orange-400" />
                     </div>
                     <div>
                       <p className="text-sm font-medium text-zinc-200">Browser wallet</p>
@@ -147,10 +146,10 @@ export default function SendPage() {
                   <button
                     onClick={() => connect({ connector: walletConnect({ projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay" }) })}
                     disabled={isPending}
-                    className="w-full flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-4 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
+                    className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
-                      <Wallet size={18} weight="duotone" className="text-blue-400" />
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
+                      <Wallet size={16} weight="duotone" className="text-blue-400" />
                     </div>
                     <div>
                       <p className="text-sm font-medium text-zinc-200">WalletConnect</p>
@@ -208,16 +207,16 @@ export default function SendPage() {
             {/* ── done ── */}
             {phase === "done" && (
               <div className="py-4 text-center">
-                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 ring-1 ring-emerald-500/20 mx-auto mb-4">
-                  <CheckCircle size={28} weight="duotone" className="text-emerald-400" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-500/10 ring-1 ring-emerald-500/20 mx-auto mb-3">
+                  <CheckCircle size={24} weight="duotone" className="text-emerald-400" />
                 </div>
                 <p className="font-semibold text-zinc-100 mb-1">Transfer complete</p>
-                <p className="text-sm text-zinc-500 mb-6 max-w-xs mx-auto">
+                <p className="text-sm text-zinc-500 mb-5 max-w-xs mx-auto">
                   Funds sent privately. Recipient's on-chain view shows only the RAILGUN relayer address.
                 </p>
                 <Link
                   href="/"
-                  className="inline-block rounded-full border border-zinc-700 px-6 py-2.5 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+                  className="inline-block rounded-full border border-zinc-700 px-6 py-2 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
                 >
                   Done
                 </Link>
@@ -226,7 +225,7 @@ export default function SendPage() {
 
             {/* Cancel footer — active transaction phases */}
             {isProgress && phase !== "done" && (
-              <div className="mt-6 flex justify-center">
+              <div className="mt-5 flex justify-center">
                 <button
                   onClick={() => setPhase("form")}
                   className="text-xs text-zinc-600 hover:text-red-400 transition-colors"

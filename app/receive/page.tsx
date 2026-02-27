@@ -15,7 +15,6 @@ import { TokenIcon } from "@/components/TokenIcon";
 import { WalletSwitcherModal } from "@/components/WalletSwitcherModal";
 
 function deriveShieldedAddress(sig: string): string {
-  // TODO: replace with RAILGUN SDK getRailgunAddress()
   const hash = sig.slice(2, 42);
   return `0zk1qy${hash.slice(0, 8)}...${hash.slice(-8)}demo`;
 }
@@ -50,7 +49,6 @@ export default function ReceivePage() {
   const [token, setToken] = useState(tokens[0]);
   const [amount, setAmount] = useState("");
 
-  // advance to idle when wallet connects
   useEffect(() => {
     if (isConnected && phase === "connect") setPhase("idle");
   }, [isConnected]); // eslint-disable-line
@@ -89,11 +87,11 @@ export default function ReceivePage() {
 
   return (
     <>
-      <main className="h-[100dvh] overflow-y-auto flex flex-col bg-[#0a0a0a]">
-        <div className="my-auto px-6 py-8">
+      <main className="min-h-[100dvh] flex flex-col bg-[#0a0a0a]">
+        <div className="flex-1 flex flex-col justify-center px-6 py-5">
 
           {/* Top nav */}
-          <div className="flex items-center justify-between mb-8 w-full max-w-md mx-auto">
+          <div className="flex items-center justify-between mb-5 w-full max-w-md mx-auto">
             <Link
               href="/"
               className="inline-flex items-center gap-1.5 text-xs text-zinc-600 hover:text-zinc-400 transition-colors"
@@ -115,26 +113,28 @@ export default function ReceivePage() {
 
           <div className="w-full max-w-md mx-auto">
 
-            {/* Page header — all phases */}
-            <div className="flex flex-col items-center mb-6 text-center">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-500/10 ring-1 ring-violet-500/20 mb-4">
-                <QrCode size={28} weight="duotone" className="text-violet-400" />
+            {/* Page header — connect / idle / signing (not ready — QR is self-explanatory) */}
+            {phase !== "ready" && (
+              <div className="flex flex-col items-center mb-4 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-500/10 ring-1 ring-violet-500/20 mb-3">
+                  <QrCode size={24} weight="duotone" className="text-violet-400" />
+                </div>
+                <h1 className="text-2xl font-bold tracking-tight mb-1.5">Receive Privately</h1>
+                <p className="text-zinc-400 text-sm leading-relaxed max-w-xs">
+                  Generate a shielded address. Senders can't trace it back to your wallet.
+                </p>
               </div>
-              <h1 className="text-3xl font-bold tracking-tight mb-2">Receive Privately</h1>
-              <p className="text-zinc-400 text-sm leading-relaxed max-w-xs">
-                Generate a shielded address. Senders can't trace it back to your wallet.
-              </p>
-            </div>
+            )}
 
             {/* ── connect ── */}
             {phase === "connect" && (
               <>
-                <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 mb-5">
+                <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 mb-4">
                   <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/40 to-transparent" />
-                  <ul className="space-y-3">
+                  <ul className="space-y-2">
                     {HOW_IT_WORKS.map((item, i) => (
                       <li key={i} className="flex items-start gap-3">
-                        <item.icon size={14} weight="duotone" className="text-violet-400 mt-0.5 shrink-0" />
+                        <item.icon size={13} weight="duotone" className="text-violet-400 mt-0.5 shrink-0" />
                         <span className="text-xs text-zinc-400">{item.text}</span>
                       </li>
                     ))}
@@ -148,10 +148,10 @@ export default function ReceivePage() {
                   <button
                     onClick={() => connect({ connector: injected() })}
                     disabled={isPending}
-                    className="w-full flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-4 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
+                    className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 ring-1 ring-orange-500/20">
-                      <Wallet size={18} weight="duotone" className="text-orange-400" />
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 ring-1 ring-orange-500/20">
+                      <Wallet size={16} weight="duotone" className="text-orange-400" />
                     </div>
                     <div>
                       <p className="text-sm font-medium text-zinc-200">Browser wallet</p>
@@ -161,10 +161,10 @@ export default function ReceivePage() {
                   <button
                     onClick={() => connect({ connector: walletConnect({ projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay" }) })}
                     disabled={isPending}
-                    className="w-full flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-4 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
+                    className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
                   >
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
-                      <Wallet size={18} weight="duotone" className="text-blue-400" />
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
+                      <Wallet size={16} weight="duotone" className="text-blue-400" />
                     </div>
                     <div>
                       <p className="text-sm font-medium text-zinc-200">WalletConnect</p>
@@ -175,15 +175,15 @@ export default function ReceivePage() {
               </>
             )}
 
-            {/* ── idle (connected, waiting to generate) ── */}
+            {/* ── idle ── */}
             {phase === "idle" && (
               <>
-                <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 mb-5">
+                <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 mb-4">
                   <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/40 to-transparent" />
-                  <ul className="space-y-3">
+                  <ul className="space-y-2">
                     {HOW_IT_WORKS.map((item, i) => (
                       <li key={i} className="flex items-start gap-3">
-                        <item.icon size={14} weight="duotone" className="text-violet-400 mt-0.5 shrink-0" />
+                        <item.icon size={13} weight="duotone" className="text-violet-400 mt-0.5 shrink-0" />
                         <span className="text-xs text-zinc-400">{item.text}</span>
                       </li>
                     ))}
@@ -191,9 +191,9 @@ export default function ReceivePage() {
                 </div>
                 <button
                   onClick={handleGenerate}
-                  className="w-full py-3.5 rounded-full text-sm font-semibold bg-white text-black hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2"
+                  className="w-full py-3 rounded-full text-sm font-semibold bg-white text-black hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2"
                 >
-                  <QrCode size={15} weight="duotone" />
+                  <QrCode size={14} weight="duotone" />
                   Generate Receive Address
                 </button>
               </>
@@ -201,12 +201,12 @@ export default function ReceivePage() {
 
             {/* ── signing ── */}
             {phase === "signing" && (
-              <div className="flex flex-col items-center py-6 gap-3">
-                <CircleNotch size={28} className="animate-spin text-violet-400" />
+              <div className="flex flex-col items-center py-5 gap-3">
+                <CircleNotch size={26} className="animate-spin text-violet-400" />
                 <p className="text-sm text-zinc-400">Check your wallet and sign the message…</p>
                 <button
                   onClick={() => setPhase("idle")}
-                  className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors mt-2"
+                  className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors mt-1"
                 >
                   Cancel
                 </button>
@@ -216,123 +216,118 @@ export default function ReceivePage() {
             {/* ── ready ── */}
             {phase === "ready" && (
               <>
-                {/* QR + address card */}
-                <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 mb-3">
+                {/* QR + address — compact, no page header above */}
+                <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 mb-3">
                   <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-violet-500/40 to-transparent" />
-                  <div className="flex flex-col items-center gap-4">
-                    <div className="rounded-xl bg-white p-3">
-                      <QRCodeSVG value={shieldedAddr!} size={156} />
+                  <div className="flex gap-4 items-start">
+                    {/* QR */}
+                    <div className="rounded-lg bg-white p-2 shrink-0">
+                      <QRCodeSVG value={shieldedAddr!} size={112} />
                     </div>
-                    <div className="w-full">
+                    {/* Address + copy */}
+                    <div className="flex-1 min-w-0 pt-0.5">
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-xs font-medium text-zinc-500 uppercase tracking-widest">Your 0zk address</span>
+                        <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-widest">0zk address</span>
                         <button
                           onClick={() => copy(shieldedAddr!, "addr")}
-                          className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                          className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
                         >
-                          {copied ? <Check size={12} weight="bold" className="text-emerald-400" /> : <Copy size={12} />}
-                          {copied ? "Copied" : "Copy"}
+                          {copied
+                            ? <><Check size={11} weight="bold" className="text-emerald-400" /> <span className="text-emerald-400">Copied</span></>
+                            : <><Copy size={11} /> Copy</>
+                          }
                         </button>
                       </div>
-                      <p className="text-xs text-zinc-300 font-mono break-all bg-zinc-800 rounded-lg px-3 py-2 leading-relaxed">{shieldedAddr}</p>
+                      <p className="text-[11px] text-zinc-300 font-mono break-all bg-zinc-800 rounded-lg px-2 py-1.5 leading-relaxed">{shieldedAddr}</p>
                     </div>
                   </div>
                 </div>
 
-                {/* Share link builder */}
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-5 mb-3">
-                  <div className="flex items-center justify-between mb-4 pb-4 border-b border-zinc-800">
-                    <span className="text-xs font-medium text-zinc-500 uppercase tracking-widest">Share link</span>
+                {/* Share link builder — compact */}
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 mb-3">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-widest">Share link</span>
                     <button
                       onClick={() => copy(shareUrl, "link")}
-                      className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                      className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
                     >
-                      {copiedLink ? <Check size={12} weight="bold" className="text-emerald-400" /> : <Copy size={12} />}
-                      {copiedLink ? "Copied" : "Copy link"}
+                      {copiedLink
+                        ? <><Check size={11} weight="bold" className="text-emerald-400" /> <span className="text-emerald-400">Copied</span></>
+                        : <><Copy size={11} /> Copy link</>
+                      }
                     </button>
                   </div>
 
-                  {/* Network */}
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs text-zinc-500">Network</span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Chain picker */}
                     <div className="relative">
                       <button
                         onClick={() => { setChainOpen(!chainOpen); setTokenOpen(false); }}
-                        className="flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:border-zinc-500 transition-colors"
+                        className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-200 hover:border-zinc-500 transition-colors"
                       >
-                        <ChainIcon chainId={chain.id} size={18} />
+                        <ChainIcon chainId={chain.id} size={14} />
                         {chain.label}
-                        <CaretDown size={12} weight="bold" className="text-zinc-500" />
+                        <CaretDown size={10} weight="bold" className="text-zinc-500" />
                       </button>
                       {chainOpen && (
-                        <div className="absolute right-0 top-full mt-2 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-20 overflow-hidden w-48">
+                        <div className="absolute left-0 top-full mt-1.5 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-20 overflow-hidden w-44">
                           {SUPPORTED_CHAINS.map((c) => (
                             <button key={c.id} onClick={() => handleChainChange(c)}
-                              className={`w-full text-left px-4 py-3 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-3 ${c.id === chain.id ? "text-violet-400" : "text-zinc-300"}`}>
-                              <ChainIcon chainId={c.id} size={22} />
-                              {c.label}
+                              className={`w-full text-left px-3 py-2.5 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2.5 ${c.id === chain.id ? "text-violet-400" : "text-zinc-300"}`}>
+                              <ChainIcon chainId={c.id} size={18} />{c.label}
                             </button>
                           ))}
                         </div>
                       )}
                     </div>
-                  </div>
 
-                  {/* Token */}
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs text-zinc-500">Token</span>
+                    {/* Token picker */}
                     <div className="relative">
                       <button
                         onClick={() => { setTokenOpen(!tokenOpen); setChainOpen(false); }}
-                        className="flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:border-zinc-500 transition-colors"
+                        className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-200 hover:border-zinc-500 transition-colors"
                       >
-                        <TokenIcon symbol={token.symbol} size={18} />
+                        <TokenIcon symbol={token.symbol} size={14} />
                         {token.symbol}
-                        <CaretDown size={12} weight="bold" className="text-zinc-500" />
+                        <CaretDown size={10} weight="bold" className="text-zinc-500" />
                       </button>
                       {tokenOpen && (
-                        <div className="absolute right-0 top-full mt-2 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-20 overflow-hidden w-36">
+                        <div className="absolute left-0 top-full mt-1.5 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-20 overflow-hidden w-32">
                           {tokens.map((t) => (
                             <button key={t.symbol} onClick={() => { setToken(t); setTokenOpen(false); }}
-                              className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-3 ${t.symbol === token.symbol ? "text-violet-400" : "text-zinc-300"}`}>
-                              <TokenIcon symbol={t.symbol} size={18} />
-                              {t.symbol}
+                              className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2.5 ${t.symbol === token.symbol ? "text-violet-400" : "text-zinc-300"}`}>
+                              <TokenIcon symbol={t.symbol} size={16} />{t.symbol}
                             </button>
                           ))}
                         </div>
                       )}
                     </div>
-                  </div>
 
-                  {/* Amount */}
-                  <div className="flex items-center justify-between mb-4 pb-4 border-b border-zinc-800">
-                    <span className="text-xs text-zinc-500">Amount <span className="text-zinc-700">(optional)</span></span>
+                    {/* Amount */}
                     <input
                       type="number"
-                      placeholder="any"
+                      placeholder="any amount"
                       value={amount}
                       onChange={(e) => setAmount(e.target.value)}
-                      className="w-28 rounded-full border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500 text-right"
+                      className="flex-1 min-w-0 rounded-full border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500"
                     />
                   </div>
 
-                  <p className="text-[10px] text-zinc-600 font-mono break-all leading-relaxed">{shareUrl}</p>
+                  <p className="text-[10px] text-zinc-700 font-mono break-all leading-relaxed mt-3">{shareUrl}</p>
                 </div>
 
-                {/* Privacy notice */}
-                <div className="rounded-xl border border-zinc-800 px-4 py-3 mb-5 flex gap-3">
-                  <ShieldCheck size={13} weight="duotone" className="text-zinc-600 mt-0.5 shrink-0" />
-                  <p className="text-xs text-zinc-500">
-                    Your real wallet is never revealed. The 0zk address is always re-derivable from the same wallet — no key to save.
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] text-zinc-700 flex items-center gap-1.5">
+                    <ShieldCheck size={11} weight="duotone" className="text-zinc-600 shrink-0" />
+                    Real wallet never revealed — 0zk always re-derivable from same wallet
                   </p>
+                  <button
+                    onClick={() => { setPhase("idle"); setShieldedAddr(null); }}
+                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap ml-3"
+                  >
+                    Regenerate
+                  </button>
                 </div>
-
-                <button
-                  onClick={() => { setPhase("idle"); setShieldedAddr(null); }}
-                  className="w-full py-3.5 rounded-full border border-zinc-700 text-sm font-medium text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
-                >
-                  Regenerate
-                </button>
               </>
             )}
           </div>

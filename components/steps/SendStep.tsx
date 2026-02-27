@@ -36,7 +36,7 @@ export function SendStep({ intent, onSuccess, onCancel }: { intent: SendIntent; 
   return (
     <div>
       <h2 className="text-lg font-semibold tracking-tight mb-1">Send privately</h2>
-      <p className="text-sm text-zinc-400 mb-6">Enter the recipient's address. A ZK proof will be generated — takes ~30 seconds.</p>
+      <p className="text-sm text-zinc-400 mb-4">Enter the recipient's address. A ZK proof will be generated — takes ~30 seconds.</p>
 
       <div className="flex justify-between text-xs px-1 mb-2">
         <span className="text-zinc-600">Available</span>
@@ -58,7 +58,7 @@ export function SendStep({ intent, onSuccess, onCancel }: { intent: SendIntent; 
         </div>
       </div>
 
-      <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 mb-6 flex gap-3">
+      <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 mb-4 flex gap-3">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-emerald-500/40 to-transparent" />
         <ShieldCheck size={13} weight="duotone" className="text-emerald-400 mt-0.5 shrink-0" />
         <p className="text-xs text-zinc-500">Recipient sees funds from the RAILGUN relayer — not your wallet address.</p>
@@ -66,7 +66,7 @@ export function SendStep({ intent, onSuccess, onCancel }: { intent: SendIntent; 
 
       {error && <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-4 py-3 mb-4"><p className="text-xs text-red-400">{error}</p></div>}
 
-      <button onClick={handleSend} disabled={!isValid || busy} className={`w-full py-3.5 rounded-full text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${!isValid || busy ? "bg-zinc-800 text-zinc-600 cursor-not-allowed" : "bg-white text-black hover:bg-zinc-200"}`}>
+      <button onClick={handleSend} disabled={!isValid || busy} className={`w-full py-2.5 rounded-full text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${!isValid || busy ? "bg-zinc-800 text-zinc-600 cursor-not-allowed" : "bg-white text-black hover:bg-zinc-200"}`}>
         {busy && <CircleNotch size={14} className="animate-spin" />}
         {label[status]}
       </button>

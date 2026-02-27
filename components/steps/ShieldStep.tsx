@@ -37,7 +37,7 @@ export function ShieldStep({ intent, onSuccess, onCancel }: { intent: SendIntent
   return (
     <div>
       <h2 className="text-lg font-semibold tracking-tight mb-1">Deposit into private pool</h2>
-      <p className="text-sm text-zinc-400 mb-6">Approve and shield your funds. This is the only step that uses your public wallet.</p>
+      <p className="text-sm text-zinc-400 mb-4">Approve and shield your funds. This is the only step that uses your public wallet.</p>
 
       <div className="relative overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 mb-3">
         <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-pink-500/40 to-transparent" />
@@ -49,13 +49,13 @@ export function ShieldStep({ intent, onSuccess, onCancel }: { intent: SendIntent
         </div>
       </div>
 
-      <div className="rounded-xl border border-zinc-800 px-4 py-3 mb-6">
+      <div className="rounded-xl border border-zinc-800 px-4 py-3 mb-4">
         <p className="text-xs text-zinc-500">You'll also need a small amount of native token for gas (~$0.10).</p>
       </div>
 
       {error && <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-4 py-3 mb-4"><p className="text-xs text-red-400">{error}</p></div>}
 
-      <button onClick={handleShield} disabled={busy} className={`w-full py-3.5 rounded-full text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${busy ? "bg-pink-950 text-pink-400 cursor-not-allowed" : "bg-white text-black hover:bg-zinc-200"}`}>
+      <button onClick={handleShield} disabled={busy} className={`w-full py-2.5 rounded-full text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${busy ? "bg-pink-950 text-pink-400 cursor-not-allowed" : "bg-white text-black hover:bg-zinc-200"}`}>
         {busy ? <CircleNotch size={14} className="animate-spin" /> : <ShieldCheck size={14} weight="duotone" />}
         {label[status]}
       </button>
