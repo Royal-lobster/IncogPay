@@ -28,7 +28,7 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-pink-500/10 ring-1 ring-pink-500/20 mb-4">
           <Ghost size={26} className="text-pink-400" />
         </div>
-        <h1 className="text-3xl font-bold tracking-tight mb-2">GhostPay</h1>
+        <h1 className="text-3xl font-bold tracking-tight mb-2">IncogPay</h1>
         <p className="text-zinc-400 text-sm leading-relaxed max-w-xs">
           Send USDC privately on Arbitrum. The recipient won't know your wallet
           address or balance.

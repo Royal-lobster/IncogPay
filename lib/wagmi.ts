@@ -7,7 +7,7 @@ export const config = createConfig({
   connectors: [
     injected(),
     walletConnect({
-      projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "ghostpay",
+      projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay",
     }),
   ],
   transports: {

@@ -13,7 +13,7 @@ export function Header() {
     <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/60">
       <div className="flex items-center gap-2">
         <Ghost size={16} className="text-violet-400" />
-        <span className="font-semibold tracking-tight">GhostPay</span>
+        <span className="font-semibold tracking-tight">IncogPay</span>
       </div>
 
       <div className="flex items-center gap-3">
