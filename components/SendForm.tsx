@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, ChevronDown, Ghost } from "lucide-react";
+import { AlertTriangle, ChevronDown, Ghost, Wallet } from "lucide-react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { SUPPORTED_TOKENS, type SupportedToken } from "@/lib/wagmi";
@@ -23,27 +23,8 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
 
   return (
     <div className="w-full max-w-md">
-      {/* Wallet connect — top right of card area */}
-      <div className="flex justify-end mb-4">
-        {isConnected && address ? (
-          <button
-            onClick={() => disconnect()}
-            className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors border border-zinc-800 rounded-full px-3 py-1.5 hover:border-zinc-600"
-          >
-            {address.slice(0, 6)}...{address.slice(-4)}
-          </button>
-        ) : (
-          <button
-            onClick={() => connect({ connector: injected() })}
-            className="text-xs font-medium rounded-full bg-white text-black px-4 py-1.5 hover:bg-zinc-200 transition-colors"
-          >
-            Connect wallet
-          </button>
-        )}
-      </div>
-
       {/* Logo / heading */}
-      <div className="flex flex-col items-center mb-10 text-center">
+      <div className="flex flex-col items-center mb-8 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-pink-500/10 ring-1 ring-pink-500/20 mb-4">
           <Ghost size={26} className="text-pink-400" />
         </div>
@@ -52,6 +33,33 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
           Send USDC privately on Arbitrum. The recipient won't know your wallet
           address or balance.
         </p>
+      </div>
+
+      {/* Wallet connect — above amount, full row */}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-3 mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Wallet size={13} className="text-zinc-500" />
+          <span className="text-xs text-zinc-500">
+            {isConnected && address
+              ? `${address.slice(0, 6)}...${address.slice(-4)}`
+              : "No wallet connected"}
+          </span>
+        </div>
+        {isConnected ? (
+          <button
+            onClick={() => disconnect()}
+            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            Disconnect
+          </button>
+        ) : (
+          <button
+            onClick={() => connect({ connector: injected() })}
+            className="text-xs font-medium rounded-full bg-white text-black px-3 py-1 hover:bg-zinc-200 transition-colors"
+          >
+            Connect
+          </button>
+        )}
       </div>
 
       {/* Amount input card */}
@@ -69,7 +77,7 @@ export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
             min="0"
           />
 
-          {/* Token selector — relative container constrains dropdown */}
+          {/* Token selector */}
           <div className="relative shrink-0">
             <button
               onClick={() => setTokenOpen(!tokenOpen)}
