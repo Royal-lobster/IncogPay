@@ -93,7 +93,10 @@ export default function ReceivePage() {
 
   return (
     <>
-      <main className="h-[100dvh] overflow-y-auto flex flex-col justify-center bg-[#0a0a0a] px-5 py-5">
+      <main className="h-[100dvh] overflow-y-auto flex flex-col justify-center bg-[#0a0a0a] px-5 py-5 relative overflow-hidden">
+      {/* ambient glows */}
+      <div className="pointer-events-none absolute -top-24 -left-16 h-72 w-72 rounded-full bg-pink-500 opacity-[0.05] blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-violet-500 opacity-[0.05] blur-3xl" />
         <div className="w-full max-w-md mx-auto">
 
           {/* Top nav */}
