@@ -6,10 +6,8 @@ import { ArrowLeft } from "@phosphor-icons/react";
 import { SendForm } from "@/components/SendForm";
 import { SendStepper } from "@/components/SendStepper";
 
-import type { SendIntent } from "@/lib/types";
-
 export default function SendPage() {
-  const [intent, setIntent] = useState<SendIntent | null>(null);
+  const [open, setOpen] = useState(false);
 
   return (
     <>
@@ -19,12 +17,10 @@ export default function SendPage() {
             <ArrowLeft size={12} weight="bold" />
             Back
           </Link>
-          <SendForm onSend={(i) => setIntent(i)} />
+          <SendForm onSend={() => setOpen(true)} />
         </div>
       </main>
-      {intent && (
-        <SendStepper intent={intent} onClose={() => setIntent(null)} />
-      )}
+      {open && <SendStepper onClose={() => setOpen(false)} />}
     </>
   );
 }

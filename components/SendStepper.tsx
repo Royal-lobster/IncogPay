@@ -3,15 +3,17 @@
 import { useState } from "react";
 import { CheckCircle, X } from "@phosphor-icons/react";
 import type { SendIntent } from "@/lib/types";
+import { AmountStep } from "./steps/AmountStep";
 import { PreflightStep } from "./steps/PreflightStep";
 import { ShieldStep } from "./steps/ShieldStep";
 import { MixingStep } from "./steps/MixingStep";
 import { SendStep } from "./steps/SendStep";
 
-export type Step = "preflight" | "shield" | "mixing" | "send" | "done";
+type Step = "amount" | "preflight" | "shield" | "mixing" | "send" | "done";
 
-const VISIBLE_STEPS: Step[] = ["shield", "mixing", "send"];
+const PROGRESS_STEPS: Step[] = ["shield", "mixing", "send"];
 const STEP_LABELS: Record<Step, string> = {
+  amount: "Amount",
   preflight: "Overview",
   shield: "Shield",
   mixing: "Mixing",
@@ -19,17 +21,19 @@ const STEP_LABELS: Record<Step, string> = {
   done: "Done",
 };
 
-export function SendStepper({ intent, onClose }: { intent: SendIntent; onClose: () => void }) {
-  const [step, setStep] = useState<Step>("preflight");
+export function SendStepper({ onClose }: { onClose: () => void }) {
+  const [step, setStep] = useState<Step>("amount");
+  const [intent, setIntent] = useState<SendIntent | null>(null);
   const [txHash, setTxHash] = useState<string | null>(null);
 
-  const curIdx = VISIBLE_STEPS.indexOf(step);
+  const curIdx = PROGRESS_STEPS.indexOf(step);
 
   const handleCancel = () => {
-    if (step === "preflight" || step === "shield") { onClose(); return; }
-    // TODO: trigger unshield
+    // TODO: trigger unshield if past shield step
     onClose();
   };
+
+  const showProgress = PROGRESS_STEPS.includes(step);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -37,10 +41,10 @@ export function SendStepper({ intent, onClose }: { intent: SendIntent; onClose: 
 
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/60">
-          {step !== "preflight" && step !== "done" ? (
+          {showProgress ? (
             <div className="flex items-center gap-4">
-              {VISIBLE_STEPS.map((s, i) => {
-                const sIdx = VISIBLE_STEPS.indexOf(s);
+              {PROGRESS_STEPS.map((s, i) => {
+                const sIdx = PROGRESS_STEPS.indexOf(s);
                 const active = s === step;
                 const done = curIdx > sIdx;
                 return (
@@ -57,26 +61,32 @@ export function SendStepper({ intent, onClose }: { intent: SendIntent; onClose: 
             </div>
           ) : (
             <span className="text-sm font-medium text-zinc-300">
-              {step === "done" ? "Complete" : "How it works"}
+              {step === "done" ? "Complete" : step === "amount" ? "Send privately" : "Overview"}
             </span>
           )}
-          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors ml-4">
             <X size={16} weight="bold" />
           </button>
         </div>
 
         {/* Content */}
         <div className="p-6">
-          {step === "preflight" && (
+          {step === "amount" && (
+            <AmountStep
+              onNext={(i) => { setIntent(i); setStep("preflight"); }}
+              onCancel={onClose}
+            />
+          )}
+          {step === "preflight" && intent && (
             <PreflightStep intent={intent} onStart={() => setStep("shield")} onCancel={onClose} />
           )}
-          {step === "shield" && (
+          {step === "shield" && intent && (
             <ShieldStep intent={intent} onSuccess={(h) => { setTxHash(h); setStep("mixing"); }} onCancel={handleCancel} />
           )}
           {step === "mixing" && (
             <MixingStep txHash={txHash} onReady={() => setStep("send")} onCancel={handleCancel} />
           )}
-          {step === "send" && (
+          {step === "send" && intent && (
             <SendStep intent={intent} onSuccess={() => setStep("done")} onCancel={handleCancel} />
           )}
           {step === "done" && (
@@ -96,7 +106,7 @@ export function SendStepper({ intent, onClose }: { intent: SendIntent; onClose: 
         </div>
 
         {/* Cancel footer */}
-        {step !== "done" && step !== "preflight" && (
+        {step !== "done" && step !== "amount" && step !== "preflight" && (
           <div className="border-t border-zinc-800/60 px-6 py-3 flex justify-center">
             <button onClick={handleCancel} className="text-xs text-zinc-600 hover:text-red-400 transition-colors">
               Cancel & return funds to wallet
