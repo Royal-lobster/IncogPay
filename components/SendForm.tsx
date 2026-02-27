@@ -7,7 +7,7 @@ import { injected } from "wagmi/connectors";
 import { SUPPORTED_CHAINS, TOKENS_BY_CHAIN, type SupportedChain } from "@/lib/wagmi";
 import { ChainIcon } from "./ChainIcon";
 import { TokenIcon } from "./TokenIcon";
-import type { SendIntent } from "@/app/page";
+import type { SendIntent } from "@/lib/types";
 
 export function SendForm({ onSend }: { onSend: (i: SendIntent) => void }) {
   const [amount, setAmount] = useState("");

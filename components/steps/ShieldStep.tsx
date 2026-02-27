@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useAccount, useConnect } from "wagmi";
 import { injected } from "wagmi/connectors";
 import { CircleNotch, ShieldCheck } from "@phosphor-icons/react";
-import type { SendIntent } from "@/app/page";
+import type { SendIntent } from "@/lib/types";
 
 type Status = "idle" | "connecting" | "approving" | "shielding" | "done" | "error";
 

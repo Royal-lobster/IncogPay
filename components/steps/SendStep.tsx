@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CircleNotch, ShieldCheck } from "@phosphor-icons/react";
-import type { SendIntent } from "@/app/page";
+import type { SendIntent } from "@/lib/types";
 
 type Status = "idle" | "proving" | "broadcasting" | "done" | "error";
 

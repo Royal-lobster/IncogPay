@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CheckCircle, X } from "@phosphor-icons/react";
-import type { SendIntent } from "@/app/page";
+import type { SendIntent } from "@/lib/types";
 import { PreflightStep } from "./steps/PreflightStep";
 import { ShieldStep } from "./steps/ShieldStep";
 import { MixingStep } from "./steps/MixingStep";

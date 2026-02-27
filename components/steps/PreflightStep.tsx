@@ -1,7 +1,7 @@
 "use client";
 
 import { Clock, PaperPlaneTilt, ArrowCounterClockwise, Wallet } from "@phosphor-icons/react";
-import type { SendIntent } from "@/app/page";
+import type { SendIntent } from "@/lib/types";
 
 const steps = [
   { icon: Wallet, role: "Step 1", title: "Deposit into private pool", desc: "Approve + shield your funds. You'll need a tiny ETH/native token for gas (~$0.10).", time: "~2 min" },
