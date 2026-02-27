@@ -5,7 +5,7 @@ import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import {
   ArrowLeft, CaretDown, Copy, Check, Ghost, QrCode,
-  Wallet, CircleNotch, ShieldCheck,
+  Wallet, CircleNotch, ShieldCheck, X,
 } from "@phosphor-icons/react";
 import { useAccount, useConnect, useSignMessage } from "wagmi";
 import { injected, walletConnect } from "wagmi/connectors";
@@ -39,7 +39,8 @@ export default function ReceivePage() {
     if (isConnected && phase === "connect") setPhase("idle");
   }, [isConnected]); // eslint-disable-line
 
-  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switcherOpen,    setSwitcherOpen]    = useState(false);
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
 
   // shielded address
   const [shieldedAddr, setShieldedAddr] = useState<string | null>(null);
@@ -84,19 +85,13 @@ export default function ReceivePage() {
     else { setCopiedLink(true); setTimeout(() => setCopiedLink(false), 2000); }
   };
 
-  const cardTitle: Record<Phase, string> = {
-    connect: "Receive Privately",
-    idle:    "Receive Privately",
-    signing: "Receive Privately",
-    ready:   "Your 0zk address",
-  };
-
   return (
     <>
       <main className="h-[100dvh] overflow-y-auto flex flex-col justify-center bg-[#0a0a0a] px-5 py-5 relative overflow-hidden">
-      {/* ambient glows */}
-      <div className="pointer-events-none absolute -top-24 -left-16 h-72 w-72 rounded-full bg-pink-500 opacity-[0.05] blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-violet-500 opacity-[0.05] blur-3xl" />
+        {/* ambient glows */}
+        <div className="pointer-events-none absolute -top-24 -left-16 h-72 w-72 rounded-full bg-pink-500 opacity-[0.05] blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-violet-500 opacity-[0.05] blur-3xl" />
+
         <div className="w-full max-w-md mx-auto">
 
           {/* Top nav */}
@@ -123,60 +118,92 @@ export default function ReceivePage() {
             {/* gradient accent */}
             <div className="h-px w-full bg-gradient-to-r from-transparent via-violet-500/40 to-transparent shrink-0" />
 
-            {/* Card header */}
+            {/* ── Permanent card header ── */}
             <div className="shrink-0 px-5 pt-4 pb-4 border-b border-zinc-800/60">
-              <div className="flex items-center gap-3">
-                <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 ${phase === "ready" ? "bg-emerald-500/10 ring-emerald-500/20" : "bg-violet-500/10 ring-violet-500/20"}`}>
-                  {phase === "ready"
-                    ? <Check size={18} weight="bold" className="text-emerald-400" />
-                    : <QrCode size={18} weight="duotone" className="text-violet-400" />
-                  }
+              {phase !== "ready" ? (
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 ring-1 ring-violet-500/20">
+                    <QrCode size={18} weight="duotone" className="text-violet-400" />
+                  </div>
+                  <div>
+                    <h1 className="text-sm font-semibold text-zinc-100">Receive Privately</h1>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Generate a shielded address. Senders can&apos;t trace it back to your wallet.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h1 className="text-sm font-semibold text-zinc-100">{cardTitle[phase]}</h1>
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    {phase === "ready"
-                      ? "Share this address — senders can't trace it to your wallet."
-                      : "Generate a shielded address. Senders can't trace it back to your wallet."
-                    }
-                  </p>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/20">
+                    <Check size={18} weight="bold" className="text-emerald-400" />
+                  </div>
+                  <div>
+                    <h1 className="text-sm font-semibold text-zinc-100">Your 0zk address</h1>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Share this address — senders can&apos;t trace it to your wallet.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Card body */}
+            {/* ── Card body ── */}
             <div className="flex-1 overflow-y-auto min-h-0 px-5 py-4 space-y-3">
 
               {/* ── connect ── */}
               {phase === "connect" && (
-                <ul className="space-y-2.5">
-                  {HOW_IT_WORKS.map((item, i) => (
-                    <li key={i} className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3.5 py-3">
-                      <item.icon size={13} weight="duotone" className="text-violet-400 mt-0.5 shrink-0" />
-                      <span className="text-xs text-zinc-400">{item.text}</span>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <div>
+                    <h2 className="text-sm font-semibold text-zinc-100">Connect Wallet</h2>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Connect a Web3 wallet to get started. No transaction — just a connection.
+                    </p>
+                  </div>
+                  <ul className="space-y-2.5">
+                    {HOW_IT_WORKS.map((item, i) => (
+                      <li key={i} className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3.5 py-3">
+                        <item.icon size={13} weight="duotone" className="text-violet-400 mt-0.5 shrink-0" />
+                        <span className="text-xs text-zinc-400">{item.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
 
               {/* ── idle ── */}
               {phase === "idle" && (
-                <ul className="space-y-2.5">
-                  {HOW_IT_WORKS.map((item, i) => (
-                    <li key={i} className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3.5 py-3">
-                      <item.icon size={13} weight="duotone" className="text-violet-400 mt-0.5 shrink-0" />
-                      <span className="text-xs text-zinc-400">{item.text}</span>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <div>
+                    <h2 className="text-sm font-semibold text-zinc-100">Generate Private Address</h2>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Sign a message to derive your RAILGUN 0zk address. Nothing is sent on-chain.
+                    </p>
+                  </div>
+                  <ul className="space-y-2.5">
+                    {HOW_IT_WORKS.map((item, i) => (
+                      <li key={i} className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3.5 py-3">
+                        <item.icon size={13} weight="duotone" className="text-violet-400 mt-0.5 shrink-0" />
+                        <span className="text-xs text-zinc-400">{item.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
 
               {/* ── signing ── */}
               {phase === "signing" && (
-                <div className="flex flex-col items-center justify-center h-full py-8 gap-3">
-                  <CircleNotch size={26} className="animate-spin text-violet-400" />
-                  <p className="text-sm text-zinc-400 text-center">Check your wallet and sign the message…</p>
-                </div>
+                <>
+                  <div>
+                    <h2 className="text-sm font-semibold text-zinc-100">Sign the Message</h2>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Approve the signature request in your wallet to generate your 0zk address.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-center justify-center py-8 gap-3">
+                    <CircleNotch size={26} className="animate-spin text-violet-400" />
+                    <p className="text-sm text-zinc-400 text-center">Check your wallet and sign the message…</p>
+                  </div>
+                </>
               )}
 
               {/* ── ready ── */}
@@ -213,7 +240,7 @@ export default function ReceivePage() {
                       </button>
                     </div>
 
-                    {/* Chain + Token + Amount in one row */}
+                    {/* Chain + Token + Amount */}
                     <div className="flex items-center gap-2">
                       <div className="relative">
                         <button onClick={() => { setChainOpen(!chainOpen); setTokenOpen(false); }}
@@ -261,33 +288,19 @@ export default function ReceivePage() {
               )}
             </div>
 
-            {/* Card footer */}
+            {/* ── Card footer ── */}
             <div className="shrink-0 border-t border-zinc-800/60 px-5 py-4">
 
               {/* connect */}
               {phase === "connect" && (
-                <div className="space-y-2">
-                  <button onClick={() => connect({ connector: injected() })} disabled={connectPending}
-                    className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 hover:border-zinc-600 transition-colors text-left disabled:opacity-50">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 ring-1 ring-orange-500/20">
-                      <Wallet size={14} weight="duotone" className="text-orange-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-zinc-200">Browser wallet</p>
-                      <p className="text-xs text-zinc-500">MetaMask, Rabby, Coinbase…</p>
-                    </div>
-                  </button>
-                  <button onClick={() => connect({ connector: walletConnect({ projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay" }) })} disabled={connectPending}
-                    className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 hover:border-zinc-600 transition-colors text-left disabled:opacity-50">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
-                      <Wallet size={14} weight="duotone" className="text-blue-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-zinc-200">WalletConnect</p>
-                      <p className="text-xs text-zinc-500">Rainbow, Trust, Ledger Live…</p>
-                    </div>
-                  </button>
-                </div>
+                <button
+                  onClick={() => setWalletModalOpen(true)}
+                  disabled={connectPending}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                >
+                  <Wallet size={14} weight="duotone" />
+                  Connect Wallet
+                </button>
               )}
 
               {/* idle */}
@@ -324,6 +337,57 @@ export default function ReceivePage() {
           </div>
         </div>
       </main>
+
+      {/* ── Wallet connect modal ── */}
+      {walletModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setWalletModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-zinc-800/60">
+              <div>
+                <h2 className="text-sm font-semibold text-zinc-100">Choose wallet</h2>
+                <p className="text-xs text-zinc-500 mt-0.5">Select how you want to connect</p>
+              </div>
+              <button onClick={() => setWalletModalOpen(false)} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+                <X size={15} weight="bold" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              <button
+                onClick={() => { connect({ connector: injected() }); setWalletModalOpen(false); }}
+                disabled={connectPending}
+                className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
+              >
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 ring-1 ring-orange-500/20">
+                  <Wallet size={14} weight="duotone" className="text-orange-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">Browser wallet</p>
+                  <p className="text-xs text-zinc-500">MetaMask, Rabby, Coinbase…</p>
+                </div>
+              </button>
+              <button
+                onClick={() => { connect({ connector: walletConnect({ projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay" }) }); setWalletModalOpen(false); }}
+                disabled={connectPending}
+                className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
+              >
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
+                  <Wallet size={14} weight="duotone" className="text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">WalletConnect</p>
+                  <p className="text-xs text-zinc-500">Rainbow, Trust, Ledger Live…</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {switcherOpen && <WalletSwitcherModal onClose={() => setSwitcherOpen(false)} />}
     </>

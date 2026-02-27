@@ -5,7 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft, Ghost, ShieldCheck, Clock, PaperPlaneTilt, Wallet,
   CheckCircle, CaretDown, Warning, ArrowCounterClockwise,
-  CircleNotch, ArrowSquareOut,
+  CircleNotch, ArrowSquareOut, X,
 } from "@phosphor-icons/react";
 import { useAccount, useConnect } from "wagmi";
 import { injected, walletConnect } from "wagmi/connectors";
@@ -51,8 +51,9 @@ export default function SendPage() {
     if (isConnected && phase === "connect") setPhase("form");
   }, [isConnected]); // eslint-disable-line
 
-  // ── wallet switcher
-  const [switcherOpen, setSwitcherOpen] = useState(false);
+  // ── wallet modals
+  const [switcherOpen,    setSwitcherOpen]    = useState(false);
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
 
   // ── form state
   const [formAmount, setFormAmount] = useState("");
@@ -72,13 +73,13 @@ export default function SendPage() {
     setChainOpen(false);
   };
 
-  // ── intent (form → preflight → shield)
+  // ── intent
   const [intent, setIntent] = useState<{ amount: string; token: string } | null>(null);
 
   // ── shield state
   const [shieldStatus, setShieldStatus] = useState<ShieldStatus>("idle");
-  const [shieldError, setShieldError] = useState<string | null>(null);
-  const [txHash, setTxHash] = useState<string | null>(null);
+  const [shieldError,  setShieldError]  = useState<string | null>(null);
+  const [txHash,       setTxHash]       = useState<string | null>(null);
   const shieldBusy = shieldStatus === "approving" || shieldStatus === "shielding";
 
   const handleShield = async () => {
@@ -114,10 +115,10 @@ export default function SendPage() {
   const mixingRemaining = Math.max(0, MIXING_MS - mixingElapsed);
 
   // ── send state
-  const [recipient,   setRecipient]   = useState("");
-  const [sendAmount,  setSendAmount]  = useState("");
-  const [sendStatus,  setSendStatus]  = useState<SendStatus>("idle");
-  const [sendError,   setSendError]   = useState<string | null>(null);
+  const [recipient,  setRecipient]  = useState("");
+  const [sendAmount, setSendAmount] = useState("");
+  const [sendStatus, setSendStatus] = useState<SendStatus>("idle");
+  const [sendError,  setSendError]  = useState<string | null>(null);
   const sendBusy  = sendStatus === "proving" || sendStatus === "broadcasting";
   const sendAvail = intent ? parseFloat(intent.amount) * (1 - 0.0025) : 0;
   const sendValid = recipient.startsWith("0x") && recipient.length === 42
@@ -137,19 +138,9 @@ export default function SendPage() {
     }
   };
 
-  // ── card config per phase ──────────────────────────────────────────────────
-  const isProgress = (PROGRESS as string[]).includes(phase);
+  // ── progress helpers
+  const isProgress  = (PROGRESS as string[]).includes(phase);
   const progressIdx = PROGRESS.indexOf(phase as (typeof PROGRESS)[number]);
-
-  const cardTitle: Record<Phase, string> = {
-    connect:  "Send Privately",
-    form:     "Send Privately",
-    preflight:"Send Privately",
-    shield:   "Shield funds",
-    mixing:   "Mixing in pool",
-    send:     "Confirm & send",
-    done:     "Transfer complete",
-  };
 
   const shieldLabel: Record<ShieldStatus, string> = {
     idle:      "Deposit into pool",
@@ -170,9 +161,10 @@ export default function SendPage() {
   return (
     <>
       <main className="h-[100dvh] overflow-y-auto flex flex-col justify-center bg-[#0a0a0a] px-5 py-5 relative overflow-hidden">
-      {/* ambient glows */}
-      <div className="pointer-events-none absolute -top-24 -left-16 h-72 w-72 rounded-full bg-pink-500 opacity-[0.05] blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-violet-500 opacity-[0.05] blur-3xl" />
+        {/* ambient glows */}
+        <div className="pointer-events-none absolute -top-24 -left-16 h-72 w-72 rounded-full bg-pink-500 opacity-[0.05] blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-20 -right-16 h-56 w-56 rounded-full bg-violet-500 opacity-[0.05] blur-3xl" />
+
         <div className="w-full max-w-md mx-auto">
 
           {/* Top nav */}
@@ -199,46 +191,21 @@ export default function SendPage() {
             {/* gradient accent */}
             <div className="h-px w-full bg-gradient-to-r from-transparent via-pink-500/40 to-transparent shrink-0" />
 
-            {/* Card header */}
+            {/* ── Permanent card header ── */}
             <div className="shrink-0 px-5 pt-4 pb-4 border-b border-zinc-800/60">
-              {/* connect / form / preflight: icon + title + subtitle */}
-              {(phase === "connect" || phase === "form" || phase === "preflight") && (
+              {phase !== "done" ? (
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/10 ring-1 ring-pink-500/20">
                     <Ghost size={18} weight="duotone" className="text-pink-400" />
                   </div>
                   <div>
-                    <h1 className="text-sm font-semibold text-zinc-100">{cardTitle[phase]}</h1>
+                    <h1 className="text-sm font-semibold text-zinc-100">Send Privately</h1>
                     <p className="text-xs text-zinc-500 mt-0.5">
                       The recipient only sees the RAILGUN relayer — not your wallet.
                     </p>
                   </div>
                 </div>
-              )}
-
-              {/* progress phases: title left + step progress right */}
-              {isProgress && (
-                <div className="flex items-center justify-between">
-                  <h1 className="text-sm font-semibold text-zinc-100">{cardTitle[phase]}</h1>
-                  <div className="flex items-center gap-2">
-                    {PROGRESS.map((s, i) => {
-                      const active = phase === s;
-                      const done   = progressIdx > i;
-                      return (
-                        <div key={s} className="flex items-center gap-2">
-                          {i > 0 && <div className={`w-3 h-px ${done ? "bg-pink-500" : "bg-zinc-800"}`} />}
-                          <span className={`text-[10px] font-medium capitalize ${active ? "text-pink-400" : done ? "text-zinc-600" : "text-zinc-700"}`}>
-                            {s}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* done: icon + title */}
-              {phase === "done" && (
+              ) : (
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 ring-1 ring-emerald-500/20">
                     <CheckCircle size={18} weight="duotone" className="text-emerald-400" />
@@ -248,109 +215,131 @@ export default function SendPage() {
               )}
             </div>
 
-            {/* Card body — scrollable */}
+            {/* ── Card body — scrollable ── */}
             <div className="flex-1 overflow-y-auto min-h-0 px-5 py-4 space-y-3">
 
               {/* ── connect ── */}
               {phase === "connect" && (
-                <ul className="space-y-2.5">
-                  {HOW_IT_WORKS.map((item, i) => (
-                    <li key={i} className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3.5 py-3">
-                      <item.icon size={13} weight="duotone" className="text-pink-400 mt-0.5 shrink-0" />
-                      <span className="text-xs text-zinc-400">{item.text}</span>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <div>
+                    <h2 className="text-sm font-semibold text-zinc-100">Connect Wallet</h2>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Connect a Web3 wallet to get started. No transaction yet — just a connection.
+                    </p>
+                  </div>
+                  <ul className="space-y-2.5">
+                    {HOW_IT_WORKS.map((item, i) => (
+                      <li key={i} className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3.5 py-3">
+                        <item.icon size={13} weight="duotone" className="text-pink-400 mt-0.5 shrink-0" />
+                        <span className="text-xs text-zinc-400">{item.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </>
               )}
 
               {/* ── form ── */}
               {phase === "form" && (
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-                  {/* Chain */}
-                  <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800">
-                    <span className="text-xs text-zinc-500">Network</span>
-                    <div className="relative">
-                      <button
-                        onClick={() => { setChainOpen(!chainOpen); setTokenOpen(false); }}
-                        className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-200 hover:border-zinc-500 transition-colors"
-                      >
-                        <ChainIcon chainId={formChain.id} size={14} />
-                        {formChain.label}
-                        <CaretDown size={10} weight="bold" className="text-zinc-500" />
-                      </button>
-                      {chainOpen && (
-                        <div className="absolute right-0 top-full mt-1.5 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-30 overflow-hidden w-44">
-                          {SUPPORTED_CHAINS.map((c) => (
-                            <button key={c.id} onClick={() => handleChainChange(c)}
-                              className={`w-full text-left px-3 py-2.5 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2.5 ${c.id === formChain.id ? "text-pink-400" : "text-zinc-300"}`}>
-                              <ChainIcon chainId={c.id} size={16} />{c.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                <>
+                  <div>
+                    <h2 className="text-sm font-semibold text-zinc-100">Enter Amount</h2>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Choose a network, token, and how much to send.
+                    </p>
                   </div>
-
-                  {/* Amount + token */}
-                  <div className="text-xs text-zinc-500 mb-2">Amount</div>
-                  <div className="flex items-center gap-3 mb-1">
-                    <input
-                      type="number"
-                      value={formAmount}
-                      onChange={(e) => setFormAmount(e.target.value)}
-                      placeholder="0.00"
-                      className="min-w-0 flex-1 text-2xl font-semibold bg-transparent text-zinc-100 placeholder:text-zinc-700 focus:outline-none"
-                      min="0"
-                    />
-                    <div className="relative shrink-0">
-                      <button
-                        onClick={() => { setTokenOpen(!tokenOpen); setChainOpen(false); }}
-                        className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-200 hover:border-zinc-500 transition-colors"
-                      >
-                        <TokenIcon symbol={formToken.symbol} size={14} />
-                        {formToken.symbol}
-                        <CaretDown size={10} weight="bold" className="text-zinc-500" />
-                      </button>
-                      {tokenOpen && (
-                        <div className="absolute right-0 top-full mt-1.5 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-30 overflow-hidden w-32">
-                          {formTokens.map((t) => (
-                            <button key={t.symbol} onClick={() => { setFormToken(t); setTokenOpen(false); }}
-                              className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2.5 ${t.symbol === formToken.symbol ? "text-pink-400" : "text-zinc-300"}`}>
-                              <TokenIcon symbol={t.symbol} size={14} />{t.symbol}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Fee breakdown */}
-                  {formNumeric > 0 && (
-                    <div className="pt-3 mt-2 border-t border-zinc-800 space-y-1">
-                      <div className="flex justify-between text-xs text-zinc-600">
-                        <span>Protocol fee (0.25%)</span>
-                        <span>−{formFee.toFixed(2)} {formToken.symbol}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-zinc-400">Recipient receives</span>
-                        <span className="text-zinc-100 font-medium">{formReceive.toFixed(2)} {formToken.symbol}</span>
+                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+                    {/* Chain */}
+                    <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800">
+                      <span className="text-xs text-zinc-500">Network</span>
+                      <div className="relative">
+                        <button
+                          onClick={() => { setChainOpen(!chainOpen); setTokenOpen(false); }}
+                          className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-200 hover:border-zinc-500 transition-colors"
+                        >
+                          <ChainIcon chainId={formChain.id} size={14} />
+                          {formChain.label}
+                          <CaretDown size={10} weight="bold" className="text-zinc-500" />
+                        </button>
+                        {chainOpen && (
+                          <div className="absolute right-0 top-full mt-1.5 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-30 overflow-hidden w-44">
+                            {SUPPORTED_CHAINS.map((c) => (
+                              <button key={c.id} onClick={() => handleChainChange(c)}
+                                className={`w-full text-left px-3 py-2.5 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2.5 ${c.id === formChain.id ? "text-pink-400" : "text-zinc-300"}`}>
+                                <ChainIcon chainId={c.id} size={16} />{c.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
-                  )}
 
-                  {/* Large amount warning */}
-                  {formNumeric >= 10000 && (
-                    <div className="flex gap-2 mt-3 rounded-lg border border-amber-900/50 bg-amber-950/20 px-3 py-2">
-                      <Warning size={12} weight="fill" className="text-amber-400 mt-0.5 shrink-0" />
-                      <p className="text-xs text-amber-400">Fee at this amount: <strong>${formFee.toFixed(0)}</strong></p>
+                    {/* Amount + token */}
+                    <div className="text-xs text-zinc-500 mb-2">Amount</div>
+                    <div className="flex items-center gap-3 mb-1">
+                      <input
+                        type="number"
+                        value={formAmount}
+                        onChange={(e) => setFormAmount(e.target.value)}
+                        placeholder="0.00"
+                        className="min-w-0 flex-1 text-2xl font-semibold bg-transparent text-zinc-100 placeholder:text-zinc-700 focus:outline-none"
+                        min="0"
+                      />
+                      <div className="relative shrink-0">
+                        <button
+                          onClick={() => { setTokenOpen(!tokenOpen); setChainOpen(false); }}
+                          className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-200 hover:border-zinc-500 transition-colors"
+                        >
+                          <TokenIcon symbol={formToken.symbol} size={14} />
+                          {formToken.symbol}
+                          <CaretDown size={10} weight="bold" className="text-zinc-500" />
+                        </button>
+                        {tokenOpen && (
+                          <div className="absolute right-0 top-full mt-1.5 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-30 overflow-hidden w-32">
+                            {formTokens.map((t) => (
+                              <button key={t.symbol} onClick={() => { setFormToken(t); setTokenOpen(false); }}
+                                className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2.5 ${t.symbol === formToken.symbol ? "text-pink-400" : "text-zinc-300"}`}>
+                                <TokenIcon symbol={t.symbol} size={14} />{t.symbol}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </div>
+
+                    {/* Fee breakdown */}
+                    {formNumeric > 0 && (
+                      <div className="pt-3 mt-2 border-t border-zinc-800 space-y-1">
+                        <div className="flex justify-between text-xs text-zinc-600">
+                          <span>Protocol fee (0.25%)</span>
+                          <span>−{formFee.toFixed(2)} {formToken.symbol}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-zinc-400">Recipient receives</span>
+                          <span className="text-zinc-100 font-medium">{formReceive.toFixed(2)} {formToken.symbol}</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Large amount warning */}
+                    {formNumeric >= 10000 && (
+                      <div className="flex gap-2 mt-3 rounded-lg border border-amber-900/50 bg-amber-950/20 px-3 py-2">
+                        <Warning size={12} weight="fill" className="text-amber-400 mt-0.5 shrink-0" />
+                        <p className="text-xs text-amber-400">Fee at this amount: <strong>${formFee.toFixed(0)}</strong></p>
+                      </div>
+                    )}
+                  </div>
+                </>
               )}
 
               {/* ── preflight ── */}
               {phase === "preflight" && (
                 <>
+                  <div>
+                    <h2 className="text-sm font-semibold text-zinc-100">What to expect</h2>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Three steps to send privately. You can cancel at any point.
+                    </p>
+                  </div>
                   <ul className="space-y-2">
                     {PREFLIGHT_STEPS.map((s, i) => (
                       <li key={i} className="flex gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3">
@@ -373,6 +362,24 @@ export default function SendPage() {
                     <p className="text-xs text-zinc-500">Cancel at any step. Funds return minus gas (~$0.10–$3).</p>
                   </div>
                 </>
+              )}
+
+              {/* ── progress tracker (shield / mixing / send) ── */}
+              {isProgress && (
+                <div className="flex items-center gap-2">
+                  {PROGRESS.map((s, i) => {
+                    const active = phase === s;
+                    const done   = progressIdx > i;
+                    return (
+                      <div key={s} className="flex items-center gap-2">
+                        {i > 0 && <div className={`w-5 h-px ${done ? "bg-pink-500" : "bg-zinc-800"}`} />}
+                        <span className={`text-[10px] font-medium capitalize ${active ? "text-pink-400" : done ? "text-zinc-600" : "text-zinc-700"}`}>
+                          {s}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               )}
 
               {/* ── shield ── */}
@@ -480,33 +487,19 @@ export default function SendPage() {
               )}
             </div>
 
-            {/* Card footer — pinned CTAs */}
+            {/* ── Card footer — pinned CTAs ── */}
             <div className="shrink-0 border-t border-zinc-800/60 px-5 py-4">
 
               {/* connect */}
               {phase === "connect" && (
-                <div className="space-y-2">
-                  <button onClick={() => connect({ connector: injected() })} disabled={connectPending}
-                    className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 hover:border-zinc-600 transition-colors text-left disabled:opacity-50">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 ring-1 ring-orange-500/20">
-                      <Wallet size={14} weight="duotone" className="text-orange-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-zinc-200">Browser wallet</p>
-                      <p className="text-xs text-zinc-500">MetaMask, Rabby, Coinbase…</p>
-                    </div>
-                  </button>
-                  <button onClick={() => connect({ connector: walletConnect({ projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay" }) })} disabled={connectPending}
-                    className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 hover:border-zinc-600 transition-colors text-left disabled:opacity-50">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
-                      <Wallet size={14} weight="duotone" className="text-blue-400" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-zinc-200">WalletConnect</p>
-                      <p className="text-xs text-zinc-500">Rainbow, Trust, Ledger Live…</p>
-                    </div>
-                  </button>
-                </div>
+                <button
+                  onClick={() => setWalletModalOpen(true)}
+                  disabled={connectPending}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                >
+                  <Wallet size={14} weight="duotone" />
+                  Connect Wallet
+                </button>
               )}
 
               {/* form */}
@@ -582,6 +575,57 @@ export default function SendPage() {
           </div>
         </div>
       </main>
+
+      {/* ── Wallet connect modal ── */}
+      {walletModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          onClick={() => setWalletModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-zinc-800/60">
+              <div>
+                <h2 className="text-sm font-semibold text-zinc-100">Choose wallet</h2>
+                <p className="text-xs text-zinc-500 mt-0.5">Select how you want to connect</p>
+              </div>
+              <button onClick={() => setWalletModalOpen(false)} className="text-zinc-600 hover:text-zinc-300 transition-colors">
+                <X size={15} weight="bold" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              <button
+                onClick={() => { connect({ connector: injected() }); setWalletModalOpen(false); }}
+                disabled={connectPending}
+                className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
+              >
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 ring-1 ring-orange-500/20">
+                  <Wallet size={14} weight="duotone" className="text-orange-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">Browser wallet</p>
+                  <p className="text-xs text-zinc-500">MetaMask, Rabby, Coinbase…</p>
+                </div>
+              </button>
+              <button
+                onClick={() => { connect({ connector: walletConnect({ projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay" }) }); setWalletModalOpen(false); }}
+                disabled={connectPending}
+                className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
+              >
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
+                  <Wallet size={14} weight="duotone" className="text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">WalletConnect</p>
+                  <p className="text-xs text-zinc-500">Rainbow, Trust, Ledger Live…</p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {switcherOpen && <WalletSwitcherModal onClose={() => setSwitcherOpen(false)} />}
     </>
