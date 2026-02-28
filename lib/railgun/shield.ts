@@ -3,6 +3,7 @@ import type {
   RailgunERC20AmountRecipient,
   TransactionGasDetails,
 } from "@railgun-community/shared-models";
+import { NETWORK_CONFIG } from "@railgun-community/shared-models";
 import {
   gasEstimateForShield,
   getShieldPrivateKeySignatureMessage,
@@ -18,6 +19,15 @@ import { getNetworkName, TXID_VERSION } from "./networks";
  */
 export function getShieldSignMessage(): string {
   return getShieldPrivateKeySignatureMessage();
+}
+
+/**
+ * Returns the RAILGUN proxy contract address for a given chain.
+ * This is the contract that tokens must be approved to before shielding.
+ */
+export function getShieldContractAddress(chainId: number): string {
+  const networkName = getNetworkName(chainId);
+  return NETWORK_CONFIG[networkName].proxyContract;
 }
 
 /**

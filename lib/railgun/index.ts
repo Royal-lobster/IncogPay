@@ -1,7 +1,7 @@
 export { ensureEngine, ensureProvider } from "./init";
 export { CHAIN_TO_NETWORK, getNetworkName, TXID_VERSION } from "./networks";
 export { waitForSpendable } from "./poi";
-export { getShieldSignMessage, populateShieldTx } from "./shield";
+export { getShieldContractAddress, getShieldSignMessage, populateShieldTx } from "./shield";
 export { privateSend } from "./transfer";
 export type {
   BroadcasterInfo,

@@ -21,7 +21,13 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { parseUnits } from "viem";
-import { useAccount, useConnect, useSendTransaction, useSignMessage } from "wagmi";
+import {
+  useAccount,
+  useConnect,
+  useSendTransaction,
+  useSignMessage,
+  useWriteContract,
+} from "wagmi";
 import { z } from "zod";
 import { ChainIcon } from "@/components/ChainIcon";
 import { TokenIcon } from "@/components/TokenIcon";
@@ -30,6 +36,7 @@ import { WalletSwitcherModal } from "@/components/WalletSwitcherModal";
 import {
   getCachedWallet,
   getOrCreateWallet,
+  getShieldContractAddress,
   getShieldSignMessage,
   populateShieldTx,
   privateSend,
@@ -131,6 +138,7 @@ export default function SendPage() {
   const { isPending: connectPending } = useConnect();
   const { signMessageAsync } = useSignMessage();
   const { sendTransactionAsync } = useSendTransaction();
+  const { writeContractAsync } = useWriteContract();
 
   // ── stepper
   const stepper = useStepper({ initialStep: isConnected ? "form" : "connect" });
@@ -198,12 +206,27 @@ export default function SendPage() {
       const shieldMsg = getShieldSignMessage();
       const shieldSig = await signMessageAsync({ message: shieldMsg });
 
-      // 3. Approve ERC20 spending
+      // 3. Approve ERC20 spending to the RAILGUN proxy contract
       const amount = parseUnits(intent.amount, tokenInfo.decimals);
-      // Note: populateShieldTx handles the RAILGUN contract address internally
-      // We approve the max to the RAILGUN proxy
-      // TODO: Get proper RAILGUN contract address from NETWORK_CONFIG
-      // For now, the shield tx will handle approval internally if needed
+      const proxyContract = getShieldContractAddress(chainId);
+
+      await writeContractAsync({
+        address: tokenInfo.address as `0x${string}`,
+        abi: [
+          {
+            name: "approve",
+            type: "function",
+            stateMutability: "nonpayable",
+            inputs: [
+              { name: "spender", type: "address" },
+              { name: "amount", type: "uint256" },
+            ],
+            outputs: [{ name: "", type: "bool" }],
+          },
+        ] as const,
+        functionName: "approve",
+        args: [proxyContract as `0x${string}`, amount],
+      });
 
       // 4. Populate and send shield transaction
       setShieldSubPhase("shielding");
