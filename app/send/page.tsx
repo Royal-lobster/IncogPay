@@ -132,6 +132,33 @@ const PREFLIGHT_STEPS = [
 function fmtAddr(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
+
+/** Parse raw blockchain / SDK errors into short, actionable messages. */
+function friendlyError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err);
+  const lower = msg.toLowerCase();
+
+  if (lower.includes("transfer amount exceeds balance"))
+    return "Insufficient token balance. Check you have enough funds in your wallet.";
+  if (lower.includes("transfer amount exceeds allowance"))
+    return "Token approval failed. Please try again.";
+  if (lower.includes("insufficient funds"))
+    return "Not enough ETH for gas. Add a small amount of native token to cover fees.";
+  if (lower.includes("user rejected") || lower.includes("user denied"))
+    return "Transaction rejected in wallet.";
+  if (lower.includes("nonce"))
+    return "Transaction conflict. Try again in a moment.";
+  if (lower.includes("network") || lower.includes("rpc") || lower.includes("timeout"))
+    return "Network error. Check your connection and try again.";
+  if (lower.includes("execution reverted"))
+    return "Transaction would fail on-chain. Double-check your balance and try again.";
+
+  // Fallback: truncate to something readable
+  const reason = msg.match(/reason="([^"]+)"/)?.[1];
+  if (reason) return reason;
+
+  return msg.length > 120 ? `${msg.slice(0, 117)}…` : msg;
+}
 // ─── component ────────────────────────────────────────────────────────────────
 export default function SendPage() {
   const { isConnected, address } = useAccount();
@@ -675,9 +702,7 @@ export default function SendPage() {
                   {shieldMutation.isError && (
                     <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-3 py-2.5">
                       <p className="text-xs text-red-400">
-                        {shieldMutation.error instanceof Error
-                          ? shieldMutation.error.message
-                          : "Transaction failed"}
+                        {friendlyError(shieldMutation.error)}
                       </p>
                     </div>
                   )}
@@ -793,9 +818,7 @@ export default function SendPage() {
                   {sendMutation.isError && (
                     <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-3 py-2.5">
                       <p className="text-xs text-red-400">
-                        {sendMutation.error instanceof Error
-                          ? sendMutation.error.message
-                          : "Send failed"}
+                        {friendlyError(sendMutation.error)}
                       </p>
                     </div>
                   )}
