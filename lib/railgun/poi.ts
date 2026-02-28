@@ -1,6 +1,6 @@
 import { NETWORK_CONFIG } from "@railgun-community/shared-models";
 import { getWalletTransactionHistory, refreshBalances } from "@railgun-community/wallet";
-import { ensureEngine } from "./init";
+import { ensureProvider } from "./init";
 import { getNetworkName } from "./networks";
 
 /**
@@ -24,8 +24,8 @@ export async function waitForSpendable(
   pollIntervalMs = 30_000,
   signal?: AbortSignal,
 ): Promise<void> {
-  await ensureEngine();
   const networkName = getNetworkName(chainId);
+  await ensureProvider(networkName);
   const { chain } = NETWORK_CONFIG[networkName];
 
   while (!signal?.aborted) {

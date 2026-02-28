@@ -11,7 +11,7 @@ import {
   populateProvedUnshield,
 } from "@railgun-community/wallet";
 import { findBestBroadcaster, sendViaBroadcaster } from "./broadcaster";
-import { ensureEngine } from "./init";
+import { ensureProvider } from "./init";
 import { getNetworkName, TXID_VERSION } from "./networks";
 import type { SendResult } from "./types";
 
@@ -43,8 +43,8 @@ export async function privateSend(
   recipientAddress: string,
   onProgress?: (phase: string, pct?: number) => void,
 ): Promise<SendResult> {
-  await ensureEngine();
   const networkName = getNetworkName(chainId);
+  await ensureProvider(networkName);
   const { chain } = NETWORK_CONFIG[networkName];
 
   // ── Step 1: Find best broadcaster ──────────────────────────────────────

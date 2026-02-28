@@ -7,8 +7,9 @@ const LevelDB = require("level-js") as new (
   name: string,
 ) => import("abstract-leveldown").AbstractLevelDOWN;
 
-// ── singleton promise to ensure init runs exactly once ────────────────────
+// ── singleton promises ────────────────────────────────────────────────────
 let initPromise: Promise<void> | null = null;
+const loadedProviders = new Set<NetworkName>();
 
 // ── artifact store (caches WASM proof files in IndexedDB via level-js) ────
 function createArtifactStore(): ArtifactStore {
@@ -57,30 +58,30 @@ function createArtifactStore(): ArtifactStore {
 // ── POI node URLs (public RAILGUN aggregators) ────────────────────────────
 const POI_NODES = ["https://poi-node.railgun.org"];
 
-// ── networks to load providers for ───────────────────────────────────────
-const NETWORKS_TO_LOAD: { name: NetworkName; rpc: string }[] = [
-  {
-    name: NetworkName.Arbitrum,
-    rpc: "https://arb1.arbitrum.io/rpc",
-  },
-  {
-    name: NetworkName.Ethereum,
-    rpc: "https://eth.llamarpc.com",
-  },
-  {
-    name: NetworkName.Polygon,
-    rpc: "https://polygon-rpc.com",
-  },
-  {
-    name: NetworkName.BNBChain,
-    rpc: "https://bsc-dataseed.binance.org",
-  },
-];
+// ── RPC endpoints per network (CORS-friendly, browser-compatible) ────────
+const NETWORK_RPCS: Record<NetworkName, string[]> = {
+  [NetworkName.Arbitrum]: [
+    "https://1rpc.io/arb",
+    "https://arb1.arbitrum.io/rpc",
+  ],
+  [NetworkName.Ethereum]: [
+    "https://1rpc.io/eth",
+    "https://eth.llamarpc.com",
+  ],
+  [NetworkName.Polygon]: [
+    "https://1rpc.io/matic",
+    "https://polygon-rpc.com",
+  ],
+  [NetworkName.BNBChain]: [
+    "https://1rpc.io/bnb",
+    "https://bsc-dataseed.binance.org",
+  ],
+} as Record<NetworkName, string[]>;
 
 // ── public API ────────────────────────────────────────────────────────────
 
 /**
- * Lazily initialise the RAILGUN engine.
+ * Lazily initialise the RAILGUN engine (no provider loading).
  * Safe to call from any module; the engine is started exactly once.
  */
 export async function ensureEngine(): Promise<void> {
@@ -88,6 +89,36 @@ export async function ensureEngine(): Promise<void> {
     initPromise = doInit();
   }
   return initPromise;
+}
+
+/**
+ * Ensure the provider for a specific network is loaded.
+ * Call this before any operation that needs on-chain data for a specific chain.
+ * Lazy — only loads the requested chain, not all chains.
+ */
+export async function ensureProvider(networkName: NetworkName): Promise<void> {
+  await ensureEngine();
+
+  if (loadedProviders.has(networkName)) return;
+
+  const rpcs = NETWORK_RPCS[networkName];
+  if (!rpcs) throw new Error(`No RPC configured for ${networkName}`);
+
+  const { chain } = NETWORK_CONFIG[networkName];
+
+  await loadProvider(
+    {
+      chainId: chain.id,
+      providers: rpcs.map((rpc, i) => ({
+        provider: rpc,
+        priority: i + 1,
+        weight: 2,
+      })),
+    },
+    networkName,
+  );
+
+  loadedProviders.add(networkName);
 }
 
 async function doInit(): Promise<void> {
@@ -102,19 +133,5 @@ async function doInit(): Promise<void> {
     false, // useNativeArtifacts (false for browser / WASM)
     false, // skipMerkletreeScans
     POI_NODES, // PPOI aggregator nodes
-  );
-
-  // Load providers for all configured chains in parallel
-  await Promise.all(
-    NETWORKS_TO_LOAD.map(({ name, rpc }) => {
-      const { chain } = NETWORK_CONFIG[name];
-      return loadProvider(
-        {
-          chainId: chain.id,
-          providers: [{ provider: rpc, priority: 1, weight: 2 }],
-        },
-        name,
-      );
-    }),
   );
 }

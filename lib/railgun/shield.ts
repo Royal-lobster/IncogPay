@@ -9,7 +9,7 @@ import {
   populateShield,
 } from "@railgun-community/wallet";
 import { getBytes, keccak256 } from "ethers";
-import { ensureEngine } from "./init";
+import { ensureProvider } from "./init";
 import { getNetworkName, TXID_VERSION } from "./networks";
 
 /**
@@ -39,8 +39,8 @@ export async function populateShieldTx(
   railgunAddress: string,
   fromWalletAddress: string,
 ) {
-  await ensureEngine();
   const networkName = getNetworkName(chainId);
+  await ensureProvider(networkName);
   const shieldPrivateKey = keccak256(getBytes(shieldSignature));
 
   const erc20AmountRecipients: RailgunERC20AmountRecipient[] = [
