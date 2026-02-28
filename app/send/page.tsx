@@ -5,27 +5,56 @@ import Link from "next/link";
 import {
   ArrowLeft, Ghost, ShieldCheck, Clock, PaperPlaneTilt, Wallet,
   CheckCircle, CaretDown, Warning, ArrowCounterClockwise,
-  CircleNotch, ArrowSquareOut, X,
+  CircleNotch, ArrowSquareOut,
 } from "@phosphor-icons/react";
 import { useAccount, useConnect } from "wagmi";
-import { injected, walletConnect } from "wagmi/connectors";
+import { useMutation } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { defineStepper } from "@stepperize/react";
 import { SUPPORTED_CHAINS, TOKENS_BY_CHAIN, type SupportedChain } from "@/lib/wagmi";
 import { ChainIcon } from "@/components/ChainIcon";
 import { TokenIcon } from "@/components/TokenIcon";
 import { WalletSwitcherModal } from "@/components/WalletSwitcherModal";
+import { WalletConnectModal } from "@/components/WalletConnectModal";
 
-// ─── types ────────────────────────────────────────────────────────────────────
-type Phase = "connect" | "form" | "preflight" | "shield" | "mixing" | "send" | "done";
-type ShieldStatus = "idle" | "approving" | "shielding" | "error";
-type SendStatus   = "idle" | "proving" | "broadcasting" | "done" | "error";
+// ─── stepper ──────────────────────────────────────────────────────────────────
+const { useStepper } = defineStepper(
+  { id: "connect" },
+  { id: "form" },
+  { id: "preflight" },
+  { id: "shield" },
+  { id: "mixing" },
+  { id: "send" },
+  { id: "done" },
+);
 
+// ─── form schema ──────────────────────────────────────────────────────────────
+const tokenSchema = z.object({
+  symbol:   z.string(),
+  name:     z.string(),
+  address:  z.string(),
+  decimals: z.number(),
+});
+
+const sendFormSchema = z.object({
+  chain:  z.custom<SupportedChain>(),
+  token:  tokenSchema,
+  amount: z.string().refine((v) => parseFloat(v) > 0, { message: "Amount must be positive" }),
+});
+
+type SendFormValues = z.infer<typeof sendFormSchema>;
+
+// ─── constants ────────────────────────────────────────────────────────────────
 const PROGRESS: ["shield", "mixing", "send"] = ["shield", "mixing", "send"];
 
 const PROGRESS_META = {
-  shield: { icon: ShieldCheck, label: "Shield funds",   heading: "Shield Funds",    sub: "Approve and deposit into RAILGUN's private pool." },
-  mixing: { icon: Clock,       label: "Mixing",         heading: "Mixing in Pool",  sub: "ZK privacy check is running on-chain. Your funds are safe." },
-  send:   { icon: PaperPlaneTilt, label: "Send",        heading: "Confirm & Send",  sub: "Generate a ZK proof and send via relayer. No ETH needed." },
+  shield: { icon: ShieldCheck,    label: "Shield funds", heading: "Shield Funds",   sub: "Approve and deposit into RAILGUN's private pool." },
+  mixing: { icon: Clock,          label: "Mixing",       heading: "Mixing in Pool", sub: "ZK privacy check is running on-chain. Your funds are safe." },
+  send:   { icon: PaperPlaneTilt, label: "Send",         heading: "Confirm & Send", sub: "Generate a ZK proof and send via relayer. No ETH needed." },
 } as const;
+
 const MIXING_MS = 60 * 60 * 1000;
 
 const HOW_IT_WORKS = [
@@ -35,9 +64,9 @@ const HOW_IT_WORKS = [
 ];
 
 const PREFLIGHT_STEPS = [
-  { icon: Wallet,          role: "Step 1", title: "Deposit into private pool",  desc: "Approve + shield your funds. You'll need a tiny amount of gas (~$0.10).", time: "~2 min"  },
-  { icon: Clock,           role: "Step 2", title: "Funds mix in pool",          desc: "RAILGUN runs an on-chain privacy check. Funds are safe — cancel anytime.", time: "~1 hour" },
-  { icon: PaperPlaneTilt,  role: "Step 3", title: "Enter recipient & send",     desc: "Confirm the destination. No native token needed — relayer handles gas.",   time: "~1 min"  },
+  { icon: Wallet,         role: "Step 1", title: "Deposit into private pool", desc: "Approve + shield your funds. You'll need a tiny amount of gas (~$0.10).", time: "~2 min"  },
+  { icon: Clock,          role: "Step 2", title: "Funds mix in pool",         desc: "RAILGUN runs an on-chain privacy check. Funds are safe — cancel anytime.", time: "~1 hour" },
+  { icon: PaperPlaneTilt, role: "Step 3", title: "Enter recipient & send",    desc: "Confirm the destination. No native token needed — relayer handles gas.",   time: "~1 min"  },
 ];
 
 function fmtAddr(a: string) { return `${a.slice(0, 6)}…${a.slice(-4)}`; }
@@ -49,119 +78,122 @@ function fmtMs(ms: number) {
 // ─── component ────────────────────────────────────────────────────────────────
 export default function SendPage() {
   const { isConnected, address } = useAccount();
-  const { connect, isPending: connectPending } = useConnect();
+  const { isPending: connectPending } = useConnect();
 
-  // ── phase
-  const [phase, setPhase] = useState<Phase>(isConnected ? "form" : "connect");
+  // ── stepper
+  const stepper = useStepper({ initialStep: isConnected ? "form" : "connect" });
+  const phase = stepper.state.current.data.id;
+
   useEffect(() => {
-    if (isConnected && phase === "connect") setPhase("form");
+    if (isConnected && phase === "connect") stepper.navigation.goTo("form");
   }, [isConnected]); // eslint-disable-line
 
   // ── wallet modals
   const [switcherOpen,    setSwitcherOpen]    = useState(false);
   const [walletModalOpen, setWalletModalOpen] = useState(false);
 
-  // ── form state
-  const [formAmount, setFormAmount] = useState("");
-  const [formChain, setFormChain] = useState<SupportedChain>(SUPPORTED_CHAINS[0]);
+  // ── UI dropdowns
   const [chainOpen, setChainOpen] = useState(false);
   const [tokenOpen, setTokenOpen] = useState(false);
-  const formTokens = TOKENS_BY_CHAIN[formChain.id];
-  const [formToken, setFormToken] = useState(formTokens[0]);
-  const formNumeric = parseFloat(formAmount) || 0;
-  const formFee     = formNumeric * 0.0025;
-  const formReceive = formNumeric - formFee;
-  const formValid   = formNumeric > 0;
+
+  // ── amount form (react-hook-form + zod)
+  const form = useForm<SendFormValues>({
+    resolver: zodResolver(sendFormSchema),
+    defaultValues: {
+      chain:  SUPPORTED_CHAINS[0],
+      token:  TOKENS_BY_CHAIN[SUPPORTED_CHAINS[0].id][0],
+      amount: "",
+    },
+  });
+
+  const formChain     = form.watch("chain");
+  const formToken     = form.watch("token");
+  const formAmountStr = form.watch("amount");
+  const formTokens    = TOKENS_BY_CHAIN[formChain.id];
+  const formNumeric   = parseFloat(formAmountStr) || 0;
+  const formFee       = formNumeric * 0.0025;
+  const formReceive   = formNumeric - formFee;
+  const formValid     = form.formState.isValid;
 
   const handleChainChange = (c: SupportedChain) => {
-    setFormChain(c);
-    setFormToken(TOKENS_BY_CHAIN[c.id][0]);
+    form.setValue("chain", c);
+    form.setValue("token", TOKENS_BY_CHAIN[c.id][0]);
     setChainOpen(false);
   };
 
-  // ── intent
+  // ── intent (locked in when advancing from form → preflight)
   const [intent, setIntent] = useState<{ amount: string; token: string } | null>(null);
 
-  // ── shield state
-  const [shieldStatus, setShieldStatus] = useState<ShieldStatus>("idle");
-  const [shieldError,  setShieldError]  = useState<string | null>(null);
-  const [txHash,       setTxHash]       = useState<string | null>(null);
-  const shieldBusy = shieldStatus === "approving" || shieldStatus === "shielding";
-
-  const handleShield = async () => {
-    try {
-      setShieldStatus("approving");
-      await new Promise((r) => setTimeout(r, 1500));
-      setShieldStatus("shielding");
-      await new Promise((r) => setTimeout(r, 2000));
-      setTxHash("0xmocktxhash");
-      setMixingStartedAt(Date.now());
-      setPhase("mixing");
-    } catch (e: unknown) {
-      setShieldError(e instanceof Error ? e.message : "Transaction failed");
-      setShieldStatus("error");
-    }
-  };
-
-  // ── mixing state
+  // ── shield mutation
+  const [shieldSubPhase, setShieldSubPhase] = useState<"approving" | "shielding">("approving");
+  const [txHash,         setTxHash]         = useState<string | null>(null);
   const [mixingStartedAt, setMixingStartedAt] = useState<number | null>(null);
-  const [mixingElapsed,   setMixingElapsed]   = useState(0);
+
+  const shieldMutation = useMutation({
+    mutationFn: async () => {
+      setShieldSubPhase("approving");
+      await new Promise((r) => setTimeout(r, 1500));
+      setShieldSubPhase("shielding");
+      await new Promise((r) => setTimeout(r, 2000));
+      return { txHash: "0xmocktxhash" as string };
+    },
+    onSuccess: ({ txHash: hash }) => {
+      setTxHash(hash);
+      setMixingStartedAt(Date.now());
+      stepper.navigation.goTo("mixing");
+    },
+  });
+
+  // ── mixing timer
+  const [mixingElapsed, setMixingElapsed] = useState(0);
 
   useEffect(() => {
     if (phase !== "mixing" || !mixingStartedAt) return;
     const id = setInterval(() => {
       const e = Date.now() - mixingStartedAt;
       setMixingElapsed(e);
-      if (e >= MIXING_MS) { clearInterval(id); setPhase("send"); }
+      if (e >= MIXING_MS) { clearInterval(id); stepper.navigation.goTo("send"); }
     }, 1000);
     return () => clearInterval(id);
-  }, [phase, mixingStartedAt]);
+  }, [phase, mixingStartedAt]); // eslint-disable-line
 
   const mixingPct       = Math.min(100, (mixingElapsed / MIXING_MS) * 100);
   const mixingRemaining = Math.max(0, MIXING_MS - mixingElapsed);
 
-  // ── send state
-  const [recipient,  setRecipient]  = useState("");
-  const [sendAmount, setSendAmount] = useState("");
-  const [sendStatus, setSendStatus] = useState<SendStatus>("idle");
-  const [sendError,  setSendError]  = useState<string | null>(null);
-  const sendBusy  = sendStatus === "proving" || sendStatus === "broadcasting";
+  // ── send mutation
+  const [sendSubLabel, setSendSubLabel] = useState<"proving" | "broadcasting">("proving");
+  const [recipient,    setRecipient]    = useState("");
+  const [sendAmount,   setSendAmount]   = useState("");
+
+  const sendMutation = useMutation({
+    mutationFn: async () => {
+      setSendSubLabel("proving");
+      await new Promise((r) => setTimeout(r, 3000));
+      setSendSubLabel("broadcasting");
+      await new Promise((r) => setTimeout(r, 1500));
+    },
+    onSuccess: () => {
+      setTimeout(() => stepper.navigation.goTo("done"), 600);
+    },
+  });
+
   const sendAvail = intent ? parseFloat(intent.amount) * (1 - 0.0025) : 0;
   const sendValid = recipient.startsWith("0x") && recipient.length === 42
     && parseFloat(sendAmount) > 0 && parseFloat(sendAmount) <= sendAvail;
-
-  const handleSend = async () => {
-    try {
-      setSendStatus("proving");
-      await new Promise((r) => setTimeout(r, 3000));
-      setSendStatus("broadcasting");
-      await new Promise((r) => setTimeout(r, 1500));
-      setSendStatus("done");
-      setTimeout(() => setPhase("done"), 600);
-    } catch (e: unknown) {
-      setSendError(e instanceof Error ? e.message : "Send failed");
-      setSendStatus("idle");
-    }
-  };
 
   // ── progress helpers
   const isProgress  = (PROGRESS as string[]).includes(phase);
   const progressIdx = PROGRESS.indexOf(phase as (typeof PROGRESS)[number]);
 
-  const shieldLabel: Record<ShieldStatus, string> = {
-    idle:      "Deposit into pool",
-    approving: "Approve in wallet…",
-    shielding: "Shielding funds…",
-    error:     "Try again",
-  };
+  const shieldButtonLabel = shieldMutation.isPending
+    ? (shieldSubPhase === "approving" ? "Approve in wallet…" : "Shielding funds…")
+    : shieldMutation.isError ? "Try again" : "Deposit into pool";
 
-  const sendLabel: Record<SendStatus, string> = {
-    idle:         "Confirm Send",
-    proving:      "Generating ZK proof…",
-    broadcasting: "Broadcasting…",
-    done:         "Sent",
-    error:        "Try again",
-  };
+  const sendButtonLabel = sendMutation.isPending
+    ? (sendSubLabel === "proving" ? "Generating ZK proof…" : "Broadcasting…")
+    : sendMutation.isSuccess ? "Sent"
+    : sendMutation.isError   ? "Try again"
+    : "Confirm Send";
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -284,8 +316,7 @@ export default function SendPage() {
                     <div className="flex items-center gap-3 mb-1">
                       <input
                         type="number"
-                        value={formAmount}
-                        onChange={(e) => setFormAmount(e.target.value)}
+                        {...form.register("amount")}
                         placeholder="0.00"
                         className="min-w-0 flex-1 text-2xl font-semibold bg-transparent text-zinc-100 placeholder:text-zinc-700 focus:outline-none"
                         min="0"
@@ -302,7 +333,7 @@ export default function SendPage() {
                         {tokenOpen && (
                           <div className="absolute right-0 top-full mt-1.5 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-30 overflow-hidden w-32">
                             {formTokens.map((t) => (
-                              <button key={t.symbol} onClick={() => { setFormToken(t); setTokenOpen(false); }}
+                              <button key={t.symbol} onClick={() => { form.setValue("token", t); setTokenOpen(false); }}
                                 className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2.5 ${t.symbol === formToken.symbol ? "text-pink-400" : "text-zinc-300"}`}>
                                 <TokenIcon symbol={t.symbol} size={14} />{t.symbol}
                               </button>
@@ -420,9 +451,11 @@ export default function SendPage() {
                   <div className="rounded-xl border border-zinc-800 px-3 py-2.5">
                     <p className="text-xs text-zinc-500">You'll also need a small amount of native token for gas (~$0.10).</p>
                   </div>
-                  {shieldError && (
+                  {shieldMutation.isError && (
                     <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-3 py-2.5">
-                      <p className="text-xs text-red-400">{shieldError}</p>
+                      <p className="text-xs text-red-400">
+                        {shieldMutation.error instanceof Error ? shieldMutation.error.message : "Transaction failed"}
+                      </p>
                     </div>
                   )}
                 </>
@@ -504,9 +537,11 @@ export default function SendPage() {
                     <ShieldCheck size={12} weight="duotone" className="text-emerald-400 mt-0.5 shrink-0" />
                     <p className="text-xs text-zinc-500">Recipient sees funds from the RAILGUN relayer — not your wallet.</p>
                   </div>
-                  {sendError && (
+                  {sendMutation.isError && (
                     <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-3 py-2.5">
-                      <p className="text-xs text-red-400">{sendError}</p>
+                      <p className="text-xs text-red-400">
+                        {sendMutation.error instanceof Error ? sendMutation.error.message : "Send failed"}
+                      </p>
                     </div>
                   )}
                 </>
@@ -540,12 +575,17 @@ export default function SendPage() {
               {/* form */}
               {phase === "form" && (
                 <div className="flex gap-3">
-                  <button onClick={() => setPhase("connect")}
+                  <button onClick={() => stepper.navigation.goTo("connect")}
                     className="flex-1 py-2.5 rounded-full border border-zinc-700 text-sm text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors">
                     Cancel
                   </button>
                   <button
-                    onClick={() => { if (formValid) { setIntent({ amount: formAmount, token: formToken.symbol }); setPhase("preflight"); } }}
+                    onClick={() => {
+                      if (formValid) {
+                        setIntent({ amount: formAmountStr, token: formToken.symbol });
+                        stepper.navigation.goTo("preflight");
+                      }
+                    }}
                     disabled={!formValid}
                     className={`flex-1 py-2.5 rounded-full text-sm font-semibold transition-colors ${formValid ? "bg-white text-black hover:bg-zinc-200" : "bg-zinc-800 text-zinc-600 cursor-not-allowed"}`}
                   >
@@ -557,11 +597,11 @@ export default function SendPage() {
               {/* preflight */}
               {phase === "preflight" && (
                 <div className="flex gap-3">
-                  <button onClick={() => setPhase("form")}
+                  <button onClick={() => stepper.navigation.goTo("form")}
                     className="flex-1 py-2.5 rounded-full border border-zinc-700 text-sm text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors">
                     Back
                   </button>
-                  <button onClick={() => setPhase("shield")}
+                  <button onClick={() => stepper.navigation.goTo("shield")}
                     className="flex-1 py-2.5 rounded-full bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition-colors">
                     Start →
                   </button>
@@ -570,16 +610,16 @@ export default function SendPage() {
 
               {/* shield */}
               {phase === "shield" && (
-                <button onClick={handleShield} disabled={shieldBusy}
-                  className={`w-full py-2.5 rounded-full text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${shieldBusy ? "bg-pink-950 text-pink-400 cursor-not-allowed" : "bg-white text-black hover:bg-zinc-200"}`}>
-                  {shieldBusy && <CircleNotch size={13} className="animate-spin" />}
-                  {shieldLabel[shieldStatus]}
+                <button onClick={() => shieldMutation.mutate()} disabled={shieldMutation.isPending}
+                  className={`w-full py-2.5 rounded-full text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${shieldMutation.isPending ? "bg-pink-950 text-pink-400 cursor-not-allowed" : "bg-white text-black hover:bg-zinc-200"}`}>
+                  {shieldMutation.isPending && <CircleNotch size={13} className="animate-spin" />}
+                  {shieldButtonLabel}
                 </button>
               )}
 
               {/* mixing */}
               {phase === "mixing" && (
-                <button onClick={() => setPhase("form")}
+                <button onClick={() => stepper.navigation.goTo("form")}
                   className="w-full text-xs text-zinc-600 hover:text-red-400 transition-colors py-1">
                   Cancel &amp; return funds to wallet
                 </button>
@@ -588,12 +628,12 @@ export default function SendPage() {
               {/* send */}
               {phase === "send" && (
                 <>
-                  <button onClick={handleSend} disabled={!sendValid || sendBusy}
-                    className={`w-full py-2.5 rounded-full text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${!sendValid || sendBusy ? "bg-zinc-800 text-zinc-600 cursor-not-allowed" : "bg-white text-black hover:bg-zinc-200"}`}>
-                    {sendBusy && <CircleNotch size={13} className="animate-spin" />}
-                    {sendLabel[sendStatus]}
+                  <button onClick={() => sendMutation.mutate()} disabled={!sendValid || sendMutation.isPending}
+                    className={`w-full py-2.5 rounded-full text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${!sendValid || sendMutation.isPending ? "bg-zinc-800 text-zinc-600 cursor-not-allowed" : "bg-white text-black hover:bg-zinc-200"}`}>
+                    {sendMutation.isPending && <CircleNotch size={13} className="animate-spin" />}
+                    {sendButtonLabel}
                   </button>
-                  {sendStatus === "proving" && (
+                  {sendMutation.isPending && sendSubLabel === "proving" && (
                     <p className="text-center text-[11px] text-zinc-600 mt-1.5">ZK proof generation takes ~30 seconds</p>
                   )}
                 </>
@@ -611,57 +651,7 @@ export default function SendPage() {
         </div>
       </main>
 
-      {/* ── Wallet connect modal ── */}
-      {walletModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-          onClick={() => setWalletModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-zinc-800/60">
-              <div>
-                <h2 className="text-sm font-semibold text-zinc-100">Choose wallet</h2>
-                <p className="text-xs text-zinc-500 mt-0.5">Select how you want to connect</p>
-              </div>
-              <button onClick={() => setWalletModalOpen(false)} className="text-zinc-600 hover:text-zinc-300 transition-colors">
-                <X size={15} weight="bold" />
-              </button>
-            </div>
-            <div className="p-4 space-y-2">
-              <button
-                onClick={() => { connect({ connector: injected() }); setWalletModalOpen(false); }}
-                disabled={connectPending}
-                className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
-              >
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 ring-1 ring-orange-500/20">
-                  <Wallet size={14} weight="duotone" className="text-orange-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-zinc-200">Browser wallet</p>
-                  <p className="text-xs text-zinc-500">MetaMask, Rabby, Coinbase…</p>
-                </div>
-              </button>
-              <button
-                onClick={() => { connect({ connector: walletConnect({ projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay" }) }); setWalletModalOpen(false); }}
-                disabled={connectPending}
-                className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
-              >
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
-                  <Wallet size={14} weight="duotone" className="text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-zinc-200">WalletConnect</p>
-                  <p className="text-xs text-zinc-500">Rainbow, Trust, Ledger Live…</p>
-                </div>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      <WalletConnectModal open={walletModalOpen} onClose={() => setWalletModalOpen(false)} />
       {switcherOpen && <WalletSwitcherModal onClose={() => setSwitcherOpen(false)} />}
     </>
   );
