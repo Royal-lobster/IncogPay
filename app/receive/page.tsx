@@ -5,21 +5,30 @@ import Link from "next/link";
 import { QRCodeSVG } from "qrcode.react";
 import {
   ArrowLeft, CaretDown, Copy, Check, Ghost, QrCode,
-  Wallet, CircleNotch, ShieldCheck, X,
+  Wallet, CircleNotch, ShieldCheck,
 } from "@phosphor-icons/react";
-import { useAccount, useConnect, useSignMessage } from "wagmi";
-import { injected, walletConnect } from "wagmi/connectors";
+import { useAccount, useSignMessage } from "wagmi";
+import { useMutation } from "@tanstack/react-query";
+import { defineStepper } from "@stepperize/react";
 import { SUPPORTED_CHAINS, TOKENS_BY_CHAIN, type SupportedChain } from "@/lib/wagmi";
 import { ChainIcon } from "@/components/ChainIcon";
 import { TokenIcon } from "@/components/TokenIcon";
 import { WalletSwitcherModal } from "@/components/WalletSwitcherModal";
+import { WalletConnectModal } from "@/components/WalletConnectModal";
 
+// ─── stepper ──────────────────────────────────────────────────────────────────
+const { useStepper } = defineStepper(
+  { id: "connect" },
+  { id: "idle" },
+  { id: "signing" },
+  { id: "ready" },
+);
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
 function deriveShieldedAddress(sig: string): string {
   const hash = sig.slice(2, 42);
   return `0zk1qy${hash.slice(0, 8)}...${hash.slice(-8)}demo`;
 }
-
-type Phase = "connect" | "idle" | "signing" | "ready";
 
 const HOW_IT_WORKS = [
   { icon: Wallet,      text: "Connect your wallet — nothing is sent, just a signature." },
@@ -29,14 +38,16 @@ const HOW_IT_WORKS = [
 
 function fmtAddr(a: string) { return `${a.slice(0, 6)}…${a.slice(-4)}`; }
 
+// ─── component ────────────────────────────────────────────────────────────────
 export default function ReceivePage() {
   const { isConnected, address } = useAccount();
-  const { connect, isPending: connectPending } = useConnect();
   const { signMessageAsync } = useSignMessage();
 
-  const [phase, setPhase] = useState<Phase>(isConnected ? "idle" : "connect");
+  const stepper = useStepper({ initialStep: isConnected ? "idle" : "connect" });
+  const phase   = stepper.state.current.data.id as "connect" | "idle" | "signing" | "ready";
+
   useEffect(() => {
-    if (isConnected && phase === "connect") setPhase("idle");
+    if (isConnected && phase === "connect") stepper.navigation.goTo("idle");
   }, [isConnected]); // eslint-disable-line
 
   const [switcherOpen,    setSwitcherOpen]    = useState(false);
@@ -48,9 +59,9 @@ export default function ReceivePage() {
   const [copiedLink,   setCopiedLink]   = useState(false);
 
   // share link config
-  const [chain,      setChain]      = useState<SupportedChain>(SUPPORTED_CHAINS[0]);
-  const [chainOpen,  setChainOpen]  = useState(false);
-  const [tokenOpen,  setTokenOpen]  = useState(false);
+  const [chain,     setChain]     = useState<SupportedChain>(SUPPORTED_CHAINS[0]);
+  const [chainOpen, setChainOpen] = useState(false);
+  const [tokenOpen, setTokenOpen] = useState(false);
   const tokens = TOKENS_BY_CHAIN[chain.id];
   const [token,  setToken]  = useState(tokens[0]);
   const [amount, setAmount] = useState("");
@@ -61,16 +72,23 @@ export default function ReceivePage() {
     setChainOpen(false);
   };
 
-  const handleGenerate = async () => {
-    try {
-      setPhase("signing");
-      const sig = await signMessageAsync({ message: "Generate my IncogPay shielded receive address" });
-      setShieldedAddr(deriveShieldedAddress(sig));
-      setPhase("ready");
-    } catch {
-      setPhase("idle");
-    }
-  };
+  // ── sign mutation
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      stepper.navigation.goTo("signing");
+      const sig = await signMessageAsync({
+        message: "Generate my IncogPay shielded receive address",
+      });
+      return deriveShieldedAddress(sig);
+    },
+    onSuccess: (addr) => {
+      setShieldedAddr(addr);
+      stepper.navigation.goTo("ready");
+    },
+    onError: () => {
+      stepper.navigation.goTo("idle");
+    },
+  });
 
   const shareUrl = (() => {
     if (!shieldedAddr || typeof window === "undefined") return "";
@@ -207,17 +225,16 @@ export default function ReceivePage() {
               )}
 
               {/* ── ready ── */}
-              {phase === "ready" && (
+              {phase === "ready" && shieldedAddr && (
                 <>
-                  {/* QR + address side by side */}
                   <div className="flex gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3.5">
                     <div className="rounded-lg bg-white p-1.5 shrink-0 self-start">
-                      <QRCodeSVG value={shieldedAddr!} size={100} />
+                      <QRCodeSVG value={shieldedAddr} size={100} />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1.5">
                         <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-widest">0zk address</span>
-                        <button onClick={() => copy(shieldedAddr!, "addr")}
+                        <button onClick={() => copy(shieldedAddr, "addr")}
                           className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
                           {copied
                             ? <><Check size={11} weight="bold" className="text-emerald-400" /><span className="text-emerald-400 ml-0.5">Copied</span></>
@@ -228,7 +245,6 @@ export default function ReceivePage() {
                     </div>
                   </div>
 
-                  {/* Share link builder */}
                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3.5">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-widest">Share link</span>
@@ -239,8 +255,6 @@ export default function ReceivePage() {
                           : <><Copy size={11} /><span className="ml-0.5">Copy link</span></>}
                       </button>
                     </div>
-
-                    {/* Chain + Token + Amount */}
                     <div className="flex items-center gap-2">
                       <div className="relative">
                         <button onClick={() => { setChainOpen(!chainOpen); setTokenOpen(false); }}
@@ -259,7 +273,6 @@ export default function ReceivePage() {
                           </div>
                         )}
                       </div>
-
                       <div className="relative">
                         <button onClick={() => { setTokenOpen(!tokenOpen); setChainOpen(false); }}
                           className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-200 hover:border-zinc-500 transition-colors">
@@ -277,11 +290,9 @@ export default function ReceivePage() {
                           </div>
                         )}
                       </div>
-
                       <input type="number" placeholder="any amount" value={amount} onChange={(e) => setAmount(e.target.value)}
                         className="flex-1 min-w-0 rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-zinc-500" />
                     </div>
-
                     <p className="text-[10px] text-zinc-700 font-mono break-all leading-relaxed mt-2.5">{shareUrl}</p>
                   </div>
                 </>
@@ -290,45 +301,43 @@ export default function ReceivePage() {
 
             {/* ── Card footer ── */}
             <div className="shrink-0 border-t border-zinc-800/60 px-5 py-4">
-
-              {/* connect */}
               {phase === "connect" && (
                 <button
                   onClick={() => setWalletModalOpen(true)}
-                  disabled={connectPending}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition-colors disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition-colors"
                 >
                   <Wallet size={14} weight="duotone" />
                   Connect Wallet
                 </button>
               )}
-
-              {/* idle */}
               {phase === "idle" && (
-                <button onClick={handleGenerate}
-                  className="w-full py-2.5 rounded-full bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2">
+                <button
+                  onClick={() => generateMutation.mutate()}
+                  disabled={generateMutation.isPending}
+                  className="w-full py-2.5 rounded-full bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+                >
                   <QrCode size={14} weight="duotone" />
                   Generate Receive Address
                 </button>
               )}
-
-              {/* signing */}
               {phase === "signing" && (
-                <button onClick={() => setPhase("idle")}
-                  className="w-full py-2.5 rounded-full border border-zinc-800 text-sm text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors">
+                <button
+                  onClick={() => { generateMutation.reset(); stepper.navigation.goTo("idle"); }}
+                  className="w-full py-2.5 rounded-full border border-zinc-800 text-sm text-zinc-500 hover:text-zinc-300 hover:border-zinc-600 transition-colors"
+                >
                   Cancel
                 </button>
               )}
-
-              {/* ready */}
               {phase === "ready" && (
                 <div className="flex items-center justify-between gap-4">
                   <p className="text-[10px] text-zinc-700 flex items-center gap-1.5 min-w-0">
                     <ShieldCheck size={10} weight="duotone" className="text-zinc-600 shrink-0" />
                     Real wallet never revealed — 0zk always re-derivable
                   </p>
-                  <button onClick={() => { setPhase("idle"); setShieldedAddr(null); }}
-                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap shrink-0">
+                  <button
+                    onClick={() => { generateMutation.reset(); setShieldedAddr(null); stepper.navigation.goTo("idle"); }}
+                    className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors whitespace-nowrap shrink-0"
+                  >
                     Regenerate
                   </button>
                 </div>
@@ -338,57 +347,7 @@ export default function ReceivePage() {
         </div>
       </main>
 
-      {/* ── Wallet connect modal ── */}
-      {walletModalOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-          onClick={() => setWalletModalOpen(false)}
-        >
-          <div
-            className="w-full max-w-sm rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-zinc-800/60">
-              <div>
-                <h2 className="text-sm font-semibold text-zinc-100">Choose wallet</h2>
-                <p className="text-xs text-zinc-500 mt-0.5">Select how you want to connect</p>
-              </div>
-              <button onClick={() => setWalletModalOpen(false)} className="text-zinc-600 hover:text-zinc-300 transition-colors">
-                <X size={15} weight="bold" />
-              </button>
-            </div>
-            <div className="p-4 space-y-2">
-              <button
-                onClick={() => { connect({ connector: injected() }); setWalletModalOpen(false); }}
-                disabled={connectPending}
-                className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
-              >
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-orange-500/10 ring-1 ring-orange-500/20">
-                  <Wallet size={14} weight="duotone" className="text-orange-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-zinc-200">Browser wallet</p>
-                  <p className="text-xs text-zinc-500">MetaMask, Rabby, Coinbase…</p>
-                </div>
-              </button>
-              <button
-                onClick={() => { connect({ connector: walletConnect({ projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay" }) }); setWalletModalOpen(false); }}
-                disabled={connectPending}
-                className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
-              >
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 ring-1 ring-blue-500/20">
-                  <Wallet size={14} weight="duotone" className="text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-zinc-200">WalletConnect</p>
-                  <p className="text-xs text-zinc-500">Rainbow, Trust, Ledger Live…</p>
-                </div>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      <WalletConnectModal open={walletModalOpen} onClose={() => setWalletModalOpen(false)} />
       {switcherOpen && <WalletSwitcherModal onClose={() => setSwitcherOpen(false)} />}
     </>
   );
