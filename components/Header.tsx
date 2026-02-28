@@ -1,6 +1,7 @@
 "use client";
 
 import { Ghost } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { injected } from "wagmi/connectors";
 
@@ -8,6 +9,8 @@ export function Header() {
   const { address, isConnected } = useAccount();
   const { connect } = useConnect();
   const { disconnect } = useDisconnect();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   return (
     <header className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/60">
@@ -20,7 +23,7 @@ export function Header() {
         <span className="text-xs text-zinc-500 border border-zinc-800 rounded-full px-2.5 py-1">
           Arbitrum
         </span>
-        {isConnected && address ? (
+        {mounted && isConnected && address ? (
           <button
             onClick={() => disconnect()}
             className="text-xs text-zinc-400 hover:text-zinc-200 transition-colors border border-zinc-800 rounded-full px-3 py-1 hover:border-zinc-600"
