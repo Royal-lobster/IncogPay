@@ -18,7 +18,8 @@ import {
 import { defineStepper } from "@stepperize/react";
 import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { parseUnits } from "viem";
 import {
@@ -171,6 +172,9 @@ export default function SendPage() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // ── URL query params (from receive page share links)
+  const searchParams = useSearchParams();
+
   // ── stepper
   const stepper = useStepper({ initialStep: "connect" });
   const phase = stepper.state.current.data.id;
@@ -196,6 +200,39 @@ export default function SendPage() {
       amount: "",
     },
   });
+
+  // ── recipient (declared early so URL prefill can set it)
+  const [recipient, setRecipient] = useState("");
+
+  // ── populate form from URL query params (receive link)
+  const prefilled = useRef(false);
+  useEffect(() => {
+    if (prefilled.current) return;
+    const qTo = searchParams.get("to");
+    const qChain = searchParams.get("chain");
+    const qToken = searchParams.get("token");
+    const qAmount = searchParams.get("amount");
+
+    if (!qTo && !qChain && !qToken && !qAmount) return;
+    prefilled.current = true;
+
+    if (qChain) {
+      const chainId = parseInt(qChain, 10);
+      const matched = SUPPORTED_CHAINS.find((c) => c.id === chainId);
+      if (matched) {
+        form.setValue("chain", matched);
+        if (qToken) {
+          const matchedToken = TOKENS_BY_CHAIN[matched.id].find(
+            (t) => t.symbol.toLowerCase() === qToken.toLowerCase(),
+          );
+          if (matchedToken) form.setValue("token", matchedToken);
+        }
+      }
+    }
+
+    if (qAmount) form.setValue("amount", qAmount);
+    if (qTo) setRecipient(qTo);
+  }, [searchParams]);
 
   const formChain = form.watch("chain");
   const formToken = form.watch("token");
@@ -317,7 +354,6 @@ export default function SendPage() {
 
   // ── send mutation
   const [sendSubLabel, setSendSubLabel] = useState<"proving" | "broadcasting">("proving");
-  const [recipient, setRecipient] = useState("");
   const [sendAmount, setSendAmount] = useState("");
   const [proofProgress, setProofProgress] = useState(0);
 
@@ -358,9 +394,11 @@ export default function SendPage() {
   });
 
   const sendAvail = intent ? parseFloat(intent.amount) * (1 - 0.0025) : 0;
+  const isValidRecipient =
+    (recipient.startsWith("0x") && recipient.length === 42) ||
+    recipient.startsWith("0zk");
   const sendValid =
-    recipient.startsWith("0x") &&
-    recipient.length === 42 &&
+    isValidRecipient &&
     parseFloat(sendAmount) > 0 &&
     parseFloat(sendAmount) <= sendAvail;
 
