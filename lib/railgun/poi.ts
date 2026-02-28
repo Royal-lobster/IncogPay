@@ -1,8 +1,5 @@
-import {
-  refreshBalances,
-  getWalletTransactionHistory,
-} from "@railgun-community/wallet";
 import { NETWORK_CONFIG } from "@railgun-community/shared-models";
+import { getWalletTransactionHistory, refreshBalances } from "@railgun-community/wallet";
 import { ensureEngine } from "./init";
 import { getNetworkName } from "./networks";
 

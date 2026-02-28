@@ -1,9 +1,6 @@
-import {
-  createRailgunWallet,
-  loadWalletByID,
-} from "@railgun-community/wallet";
 import { NETWORK_CONFIG, NetworkName } from "@railgun-community/shared-models";
-import { keccak256, getBytes, Mnemonic } from "ethers";
+import { createRailgunWallet, loadWalletByID } from "@railgun-community/wallet";
+import { getBytes, keccak256, Mnemonic } from "ethers";
 import { ensureEngine } from "./init";
 import type { RailgunWalletState } from "./types";
 
@@ -19,9 +16,7 @@ export { SIGN_MESSAGE };
  * Create or load a RAILGUN wallet from a wallet signature.
  * The same signature always produces the same deterministic wallet.
  */
-export async function getOrCreateWallet(
-  signature: string,
-): Promise<RailgunWalletState> {
+export async function getOrCreateWallet(signature: string): Promise<RailgunWalletState> {
   if (cachedState) return cachedState;
 
   await ensureEngine();
@@ -60,11 +55,7 @@ export async function getOrCreateWallet(
     }
   }
 
-  const walletInfo = await createRailgunWallet(
-    encryptionKey,
-    mnemonic,
-    creationBlockNumbers,
-  );
+  const walletInfo = await createRailgunWallet(encryptionKey, mnemonic, creationBlockNumbers);
 
   localStorage.setItem(STORAGE_KEY, walletInfo.id);
 
@@ -87,9 +78,7 @@ export function getCachedWallet(): RailgunWalletState | null {
  * Get just the RAILGUN 0zk address from a signature.
  * Convenience wrapper used by the receive flow.
  */
-export async function deriveRailgunAddress(
-  signature: string,
-): Promise<string> {
+export async function deriveRailgunAddress(signature: string): Promise<string> {
   const state = await getOrCreateWallet(signature);
   return state.railgunAddress;
 }

@@ -1,12 +1,5 @@
-import { ArtifactStore } from "@railgun-community/wallet";
-import {
-  startRailgunEngine,
-  loadProvider,
-} from "@railgun-community/wallet";
-import {
-  NetworkName,
-  NETWORK_CONFIG,
-} from "@railgun-community/shared-models";
+import { NETWORK_CONFIG, NetworkName } from "@railgun-community/shared-models";
+import { ArtifactStore, loadProvider, startRailgunEngine } from "@railgun-community/wallet";
 
 // level-js has no TypeScript declarations — import as untyped and cast.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -24,14 +17,10 @@ function createArtifactStore(): ArtifactStore {
   const get = async (path: string): Promise<string | Buffer | null> => {
     try {
       const data = await new Promise<Buffer>((resolve, reject) => {
-        db.get(
-          path,
-          { asBuffer: true },
-          (err: Error | undefined, value: Buffer) => {
-            if (err) reject(err);
-            else resolve(value);
-          },
-        );
+        db.get(path, { asBuffer: true }, (err: Error | undefined, value: Buffer) => {
+          if (err) reject(err);
+          else resolve(value);
+        });
       });
       return data;
     } catch {
@@ -39,11 +28,7 @@ function createArtifactStore(): ArtifactStore {
     }
   };
 
-  const store = async (
-    _dir: string,
-    path: string,
-    item: string | Uint8Array,
-  ): Promise<void> => {
+  const store = async (_dir: string, path: string, item: string | Uint8Array): Promise<void> => {
     await new Promise<void>((resolve, reject) => {
       db.put(path, item, (err: Error | undefined) => {
         if (err) reject(err);
@@ -55,14 +40,10 @@ function createArtifactStore(): ArtifactStore {
   const exists = async (path: string): Promise<boolean> => {
     try {
       await new Promise<Buffer>((resolve, reject) => {
-        db.get(
-          path,
-          { asBuffer: true },
-          (err: Error | undefined, value: Buffer) => {
-            if (err) reject(err);
-            else resolve(value);
-          },
-        );
+        db.get(path, { asBuffer: true }, (err: Error | undefined, value: Buffer) => {
+          if (err) reject(err);
+          else resolve(value);
+        });
       });
       return true;
     } catch {

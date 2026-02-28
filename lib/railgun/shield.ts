@@ -1,14 +1,14 @@
+import type {
+  EVMGasType,
+  RailgunERC20AmountRecipient,
+  TransactionGasDetails,
+} from "@railgun-community/shared-models";
 import {
   gasEstimateForShield,
   getShieldPrivateKeySignatureMessage,
   populateShield,
 } from "@railgun-community/wallet";
-import type {
-  RailgunERC20AmountRecipient,
-  TransactionGasDetails,
-  EVMGasType,
-} from "@railgun-community/shared-models";
-import { keccak256, getBytes } from "ethers";
+import { getBytes, keccak256 } from "ethers";
 import { ensureEngine } from "./init";
 import { getNetworkName, TXID_VERSION } from "./networks";
 

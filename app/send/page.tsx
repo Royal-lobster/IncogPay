@@ -20,23 +20,23 @@ import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { useAccount, useConnect, useSignMessage, useSendTransaction } from "wagmi";
 import { parseUnits } from "viem";
+import { useAccount, useConnect, useSendTransaction, useSignMessage } from "wagmi";
 import { z } from "zod";
 import { ChainIcon } from "@/components/ChainIcon";
 import { TokenIcon } from "@/components/TokenIcon";
 import { WalletConnectModal } from "@/components/WalletConnectModal";
 import { WalletSwitcherModal } from "@/components/WalletSwitcherModal";
-import { SUPPORTED_CHAINS, type SupportedChain, TOKENS_BY_CHAIN } from "@/lib/wagmi";
 import {
+  getCachedWallet,
   getOrCreateWallet,
   getShieldSignMessage,
   populateShieldTx,
+  privateSend,
   SIGN_MESSAGE,
   waitForSpendable,
-  getCachedWallet,
-  privateSend,
 } from "@/lib/railgun";
+import { SUPPORTED_CHAINS, type SupportedChain, TOKENS_BY_CHAIN } from "@/lib/wagmi";
 
 // ─── stepper ──────────────────────────────────────────────────────────────────
 const { useStepper } = defineStepper(
@@ -186,9 +186,7 @@ export default function SendPage() {
       if (!intent || !address) throw new Error("Missing intent or wallet");
 
       const chainId = formChain.id;
-      const tokenInfo = TOKENS_BY_CHAIN[chainId].find(
-        (t) => t.symbol === intent.token,
-      );
+      const tokenInfo = TOKENS_BY_CHAIN[chainId].find((t) => t.symbol === intent.token);
       if (!tokenInfo) throw new Error("Token not found");
 
       // 1. Sign message to derive RAILGUN wallet
@@ -276,9 +274,7 @@ export default function SendPage() {
       const wallet = getCachedWallet();
       if (!wallet) throw new Error("RAILGUN wallet not initialized");
 
-      const tokenInfo = TOKENS_BY_CHAIN[formChain.id].find(
-        (t) => t.symbol === intent.token,
-      );
+      const tokenInfo = TOKENS_BY_CHAIN[formChain.id].find((t) => t.symbol === intent.token);
       if (!tokenInfo) throw new Error("Token not found");
 
       const amount = parseUnits(sendAmount, tokenInfo.decimals);

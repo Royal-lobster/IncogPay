@@ -21,8 +21,8 @@ import { ChainIcon } from "@/components/ChainIcon";
 import { TokenIcon } from "@/components/TokenIcon";
 import { WalletConnectModal } from "@/components/WalletConnectModal";
 import { WalletSwitcherModal } from "@/components/WalletSwitcherModal";
-import { SUPPORTED_CHAINS, type SupportedChain, TOKENS_BY_CHAIN } from "@/lib/wagmi";
 import { deriveRailgunAddress } from "@/lib/railgun";
+import { SUPPORTED_CHAINS, type SupportedChain, TOKENS_BY_CHAIN } from "@/lib/wagmi";
 
 // ─── stepper ──────────────────────────────────────────────────────────────────
 const { useStepper } = defineStepper(

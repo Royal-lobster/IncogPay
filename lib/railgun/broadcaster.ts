@@ -1,14 +1,11 @@
-import {
-  NETWORK_CONFIG,
-  BroadcasterConnectionStatus,
-} from "@railgun-community/shared-models";
 import type {
-  NetworkName,
   Chain,
-  SelectedBroadcaster,
+  NetworkName,
   PreTransactionPOIsPerTxidLeafPerList,
+  SelectedBroadcaster,
   TXIDVersion,
 } from "@railgun-community/shared-models";
+import { BroadcasterConnectionStatus, NETWORK_CONFIG } from "@railgun-community/shared-models";
 import { calculateBroadcasterFeeERC20Amount } from "@railgun-community/wallet";
 import type { BroadcasterInfo } from "./types";
 
@@ -39,10 +36,7 @@ export async function initBroadcasters(networkName: NetworkName): Promise<void> 
   const waku = await getWaku();
   const { chain } = NETWORK_CONFIG[networkName];
 
-  const statusCallback = (
-    _chain: Chain,
-    status: BroadcasterConnectionStatus,
-  ) => {
+  const statusCallback = (_chain: Chain, status: BroadcasterConnectionStatus) => {
     if (status !== BroadcasterConnectionStatus.Connected) {
       console.log(`[IncogPay] Waku ${status}`);
     }
@@ -68,13 +62,14 @@ export async function findBestBroadcaster(
   const { chain } = NETWORK_CONFIG[networkName];
 
   // findBestBroadcaster is synchronous — returns Optional<SelectedBroadcaster>
-  const selected: SelectedBroadcaster | undefined =
-    waku.WakuBroadcasterClient.findBestBroadcaster(chain, tokenAddress, true);
+  const selected: SelectedBroadcaster | undefined = waku.WakuBroadcasterClient.findBestBroadcaster(
+    chain,
+    tokenAddress,
+    true,
+  );
 
   if (!selected) {
-    throw new Error(
-      "No broadcaster available for this token and network",
-    );
+    throw new Error("No broadcaster available for this token and network");
   }
 
   return {

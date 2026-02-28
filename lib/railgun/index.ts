@@ -1,17 +1,17 @@
 export { ensureEngine } from "./init";
+export { CHAIN_TO_NETWORK, getNetworkName, TXID_VERSION } from "./networks";
+export { waitForSpendable } from "./poi";
+export { getShieldSignMessage, populateShieldTx } from "./shield";
+export { privateSend } from "./transfer";
+export type {
+  BroadcasterInfo,
+  RailgunWalletState,
+  SendResult,
+  ShieldResult,
+} from "./types";
 export {
-  getOrCreateWallet,
-  getCachedWallet,
   deriveRailgunAddress,
+  getCachedWallet,
+  getOrCreateWallet,
   SIGN_MESSAGE,
 } from "./wallet";
-export { getShieldSignMessage, populateShieldTx } from "./shield";
-export { waitForSpendable } from "./poi";
-export { privateSend } from "./transfer";
-export { getNetworkName, TXID_VERSION, CHAIN_TO_NETWORK } from "./networks";
-export type {
-  RailgunWalletState,
-  ShieldResult,
-  SendResult,
-  BroadcasterInfo,
-} from "./types";
