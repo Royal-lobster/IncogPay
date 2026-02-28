@@ -1,7 +1,7 @@
 "use client";
 
 import { CaretDown, Wallet } from "@phosphor-icons/react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useAccount, useConnect } from "wagmi";
 import { injected, walletConnect } from "wagmi/connectors";
 import { WalletSwitcherModal } from "./WalletSwitcherModal";
@@ -34,11 +34,13 @@ export function WalletConnectGate({ children, accentColor = "pink" }: WalletConn
   const { isConnected, address } = useAccount();
   const { connect, isPending } = useConnect();
   const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   const ac = ACCENT[accentColor];
 
   /* ── Not connected: show connect UI ── */
-  if (!isConnected) {
+  if (!mounted || !isConnected) {
     return (
       <div className="w-full max-w-md mx-auto">
         {/* Header */}

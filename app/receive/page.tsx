@@ -47,7 +47,7 @@ export default function ReceivePage() {
   const { isConnected, address } = useAccount();
   const { signMessageAsync } = useSignMessage();
 
-  const stepper = useStepper({ initialStep: isConnected ? "idle" : "connect" });
+  const stepper = useStepper({ initialStep: "connect" });
   const phase = stepper.state.current.data.id as "connect" | "idle" | "signing" | "ready";
 
   useEffect(() => {

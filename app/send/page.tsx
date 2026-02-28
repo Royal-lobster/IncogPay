@@ -172,7 +172,7 @@ export default function SendPage() {
   useEffect(() => setMounted(true), []);
 
   // ── stepper
-  const stepper = useStepper({ initialStep: isConnected ? "form" : "connect" });
+  const stepper = useStepper({ initialStep: "connect" });
   const phase = stepper.state.current.data.id;
 
   useEffect(() => {
