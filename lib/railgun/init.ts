@@ -111,7 +111,7 @@ async function doInit(): Promise<void> {
       return loadProvider(
         {
           chainId: chain.id,
-          providers: [{ provider: rpc, priority: 1, weight: 1 }],
+          providers: [{ provider: rpc, priority: 1, weight: 2 }],
         },
         name,
       );

@@ -76,9 +76,7 @@ export function getCachedWallet(): RailgunWalletState | null {
 
 /**
  * Get just the RAILGUN 0zk address from a signature.
- * Convenience wrapper used by the receive flow.
+ * Uses lightweight key derivation — no engine initialization needed.
+ * Used by the receive flow for instant address generation.
  */
-export async function deriveRailgunAddress(signature: string): Promise<string> {
-  const state = await getOrCreateWallet(signature);
-  return state.railgunAddress;
-}
+export { deriveRailgunAddressLightweight as deriveRailgunAddress } from "./address";
