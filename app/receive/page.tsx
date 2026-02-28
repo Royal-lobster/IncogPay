@@ -21,6 +21,7 @@ import { ChainIcon } from "@/components/ChainIcon";
 import { TokenIcon } from "@/components/TokenIcon";
 import { WalletConnectModal } from "@/components/WalletConnectModal";
 import { WalletSwitcherModal } from "@/components/WalletSwitcherModal";
+import { deriveRailgunAddress } from "@/lib/railgun";
 import { SUPPORTED_CHAINS, type SupportedChain, TOKENS_BY_CHAIN } from "@/lib/wagmi";
 
 // ─── stepper ──────────────────────────────────────────────────────────────────
@@ -30,12 +31,6 @@ const { useStepper } = defineStepper(
   { id: "signing" },
   { id: "ready" },
 );
-
-// ─── helpers ──────────────────────────────────────────────────────────────────
-function deriveShieldedAddress(sig: string): string {
-  const hash = sig.slice(2, 42);
-  return `0zk1qy${hash.slice(0, 8)}...${hash.slice(-8)}demo`;
-}
 
 const HOW_IT_WORKS = [
   { icon: Wallet, text: "Connect your wallet — nothing is sent, just a signature." },
@@ -86,9 +81,9 @@ export default function ReceivePage() {
     mutationFn: async () => {
       stepper.navigation.goTo("signing");
       const sig = await signMessageAsync({
-        message: "Generate my IncogPay shielded receive address",
+        message: "Generate my IncogPay RAILGUN wallet",
       });
-      return deriveShieldedAddress(sig);
+      return deriveRailgunAddress(sig);
     },
     onSuccess: (addr) => {
       setShieldedAddr(addr);
