@@ -1,15 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import { CheckCircle, X } from "@phosphor-icons/react";
+import { useState } from "react";
 import { useAccount } from "wagmi";
 import type { SendIntent } from "@/lib/types";
-import { ConnectStep } from "./steps/ConnectStep";
 import { AmountStep } from "./steps/AmountStep";
-import { PreflightStep } from "./steps/PreflightStep";
-import { ShieldStep } from "./steps/ShieldStep";
+import { ConnectStep } from "./steps/ConnectStep";
 import { MixingStep } from "./steps/MixingStep";
+import { PreflightStep } from "./steps/PreflightStep";
 import { SendStep } from "./steps/SendStep";
+import { ShieldStep } from "./steps/ShieldStep";
 
 type Step = "connect" | "amount" | "preflight" | "shield" | "mixing" | "send" | "done";
 
@@ -42,7 +42,6 @@ export function SendStepper({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="w-full sm:max-w-lg rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl overflow-hidden">
-
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800/60">
           {showProgress ? (
@@ -53,10 +52,14 @@ export function SendStepper({ onClose }: { onClose: () => void }) {
                 const done = curIdx > sIdx;
                 return (
                   <div key={s} className="flex items-center gap-3">
-                    {i > 0 && <div className={`w-6 h-px ${done ? "bg-pink-500" : "bg-zinc-800"}`} />}
-                    <span className={`text-xs font-medium transition-colors ${
-                      active ? "text-pink-400" : done ? "text-zinc-600" : "text-zinc-700"
-                    }`}>
+                    {i > 0 && (
+                      <div className={`w-6 h-px ${done ? "bg-pink-500" : "bg-zinc-800"}`} />
+                    )}
+                    <span
+                      className={`text-xs font-medium transition-colors ${
+                        active ? "text-pink-400" : done ? "text-zinc-600" : "text-zinc-700"
+                      }`}
+                    >
                       {STEP_LABELS[s]}
                     </span>
                   </div>
@@ -65,10 +68,19 @@ export function SendStepper({ onClose }: { onClose: () => void }) {
             </div>
           ) : (
             <span className="text-sm font-medium text-zinc-300">
-              {step === "done" ? "Complete" : step === "connect" ? "Connect wallet" : step === "amount" ? "Send privately" : "Overview"}
+              {step === "done"
+                ? "Complete"
+                : step === "connect"
+                  ? "Connect wallet"
+                  : step === "amount"
+                    ? "Send privately"
+                    : "Overview"}
             </span>
           )}
-          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors ml-4">
+          <button
+            onClick={onClose}
+            className="text-zinc-600 hover:text-zinc-300 transition-colors ml-4"
+          >
             <X size={16} weight="bold" />
           </button>
         </div>
@@ -80,7 +92,10 @@ export function SendStepper({ onClose }: { onClose: () => void }) {
           )}
           {step === "amount" && (
             <AmountStep
-              onNext={(i) => { setIntent(i); setStep("preflight"); }}
+              onNext={(i) => {
+                setIntent(i);
+                setStep("preflight");
+              }}
               onCancel={onClose}
             />
           )}
@@ -88,7 +103,14 @@ export function SendStepper({ onClose }: { onClose: () => void }) {
             <PreflightStep intent={intent} onStart={() => setStep("shield")} onCancel={onClose} />
           )}
           {step === "shield" && intent && (
-            <ShieldStep intent={intent} onSuccess={(h) => { setTxHash(h); setStep("mixing"); }} onCancel={handleCancel} />
+            <ShieldStep
+              intent={intent}
+              onSuccess={(h) => {
+                setTxHash(h);
+                setStep("mixing");
+              }}
+              onCancel={handleCancel}
+            />
           )}
           {step === "mixing" && (
             <MixingStep txHash={txHash} onReady={() => setStep("send")} onCancel={handleCancel} />
@@ -103,9 +125,13 @@ export function SendStepper({ onClose }: { onClose: () => void }) {
               </div>
               <p className="font-semibold text-zinc-100 mb-1">Transfer complete</p>
               <p className="text-sm text-zinc-500 mb-6 max-w-xs mx-auto">
-                Funds sent privately. Recipient's on-chain view shows only the RAILGUN relayer address.
+                Funds sent privately. Recipient's on-chain view shows only the RAILGUN relayer
+                address.
               </p>
-              <button onClick={onClose} className="rounded-full border border-zinc-700 px-6 py-2 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors">
+              <button
+                onClick={onClose}
+                className="rounded-full border border-zinc-700 px-6 py-2 text-sm text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+              >
                 Close
               </button>
             </div>
@@ -115,7 +141,10 @@ export function SendStepper({ onClose }: { onClose: () => void }) {
         {/* Cancel footer */}
         {step !== "done" && step !== "connect" && step !== "amount" && step !== "preflight" && (
           <div className="border-t border-zinc-800/60 px-6 py-3 flex justify-center">
-            <button onClick={handleCancel} className="text-xs text-zinc-600 hover:text-red-400 transition-colors">
+            <button
+              onClick={handleCancel}
+              className="text-xs text-zinc-600 hover:text-red-400 transition-colors"
+            >
               Cancel & return funds to wallet
             </button>
           </div>

@@ -1,17 +1,19 @@
 "use client";
 
-import { Ghost, ShieldCheck, Clock, PaperPlaneTilt } from "@phosphor-icons/react";
+import { Clock, Ghost, PaperPlaneTilt, ShieldCheck } from "@phosphor-icons/react";
 
 const HOW_IT_WORKS = [
-  { icon: ShieldCheck,     text: "Approve and shield your funds into RAILGUN's private pool." },
-  { icon: Clock,           text: "Funds mix for ~1 hour while RAILGUN runs its on-chain privacy check." },
-  { icon: PaperPlaneTilt,  text: "Enter recipient, generate a ZK proof, and send via relayer. No ETH needed." },
+  { icon: ShieldCheck, text: "Approve and shield your funds into RAILGUN's private pool." },
+  { icon: Clock, text: "Funds mix for ~1 hour while RAILGUN runs its on-chain privacy check." },
+  {
+    icon: PaperPlaneTilt,
+    text: "Enter recipient, generate a ZK proof, and send via relayer. No ETH needed.",
+  },
 ];
 
 export function SendForm({ onSend }: { onSend: () => void }) {
   return (
     <div className="w-full max-w-md">
-
       {/* Header */}
       <div className="flex flex-col items-center mb-6 text-center">
         <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-pink-500/10 ring-1 ring-pink-500/20 mb-4">

@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { CaretDown, Warning } from "@phosphor-icons/react";
-import { SUPPORTED_CHAINS, TOKENS_BY_CHAIN, type SupportedChain } from "@/lib/wagmi";
+import { useState } from "react";
 import { ChainIcon } from "@/components/ChainIcon";
 import { TokenIcon } from "@/components/TokenIcon";
 import type { SendIntent } from "@/lib/types";
+import { SUPPORTED_CHAINS, type SupportedChain, TOKENS_BY_CHAIN } from "@/lib/wagmi";
 
 export function AmountStep({
   onNext,
@@ -40,13 +40,17 @@ export function AmountStep({
 
       {/* Main card */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4 mb-2">
-
         {/* Chain */}
         <div className="flex items-center justify-between mb-3 pb-3 border-b border-zinc-800">
-          <span className="text-xs font-medium text-zinc-500 uppercase tracking-widest">Network</span>
+          <span className="text-xs font-medium text-zinc-500 uppercase tracking-widest">
+            Network
+          </span>
           <div className="relative">
             <button
-              onClick={() => { setChainOpen(!chainOpen); setTokenOpen(false); }}
+              onClick={() => {
+                setChainOpen(!chainOpen);
+                setTokenOpen(false);
+              }}
               className="flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:border-zinc-500 transition-colors"
             >
               <ChainIcon chainId={chain.id} size={18} />
@@ -56,8 +60,11 @@ export function AmountStep({
             {chainOpen && (
               <div className="absolute right-0 top-full mt-1.5 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-30 overflow-hidden w-48">
                 {SUPPORTED_CHAINS.map((c) => (
-                  <button key={c.id} onClick={() => handleChainChange(c)}
-                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-3 ${c.id === chain.id ? "text-pink-400" : "text-zinc-300"}`}>
+                  <button
+                    key={c.id}
+                    onClick={() => handleChainChange(c)}
+                    className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-3 ${c.id === chain.id ? "text-pink-400" : "text-zinc-300"}`}
+                  >
                     <ChainIcon chainId={c.id} size={20} />
                     {c.label}
                   </button>
@@ -68,7 +75,9 @@ export function AmountStep({
         </div>
 
         {/* Amount + token */}
-        <label className="block text-xs font-medium text-zinc-500 uppercase tracking-widest mb-2">Amount</label>
+        <label className="block text-xs font-medium text-zinc-500 uppercase tracking-widest mb-2">
+          Amount
+        </label>
         <div className="flex items-center gap-3">
           <input
             type="number"
@@ -80,7 +89,10 @@ export function AmountStep({
           />
           <div className="relative shrink-0">
             <button
-              onClick={() => { setTokenOpen(!tokenOpen); setChainOpen(false); }}
+              onClick={() => {
+                setTokenOpen(!tokenOpen);
+                setChainOpen(false);
+              }}
               className="flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-sm font-medium text-zinc-200 hover:border-zinc-500 transition-colors whitespace-nowrap"
             >
               <TokenIcon symbol={token.symbol} size={18} />
@@ -90,8 +102,14 @@ export function AmountStep({
             {tokenOpen && (
               <div className="absolute right-0 top-full mt-1.5 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-30 overflow-hidden w-36">
                 {tokens.map((t) => (
-                  <button key={t.symbol} onClick={() => { setToken(t); setTokenOpen(false); }}
-                    className={`w-full text-left px-4 py-2 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-3 ${t.symbol === token.symbol ? "text-pink-400" : "text-zinc-300"}`}>
+                  <button
+                    key={t.symbol}
+                    onClick={() => {
+                      setToken(t);
+                      setTokenOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-3 ${t.symbol === token.symbol ? "text-pink-400" : "text-zinc-300"}`}
+                  >
                     <TokenIcon symbol={t.symbol} size={18} />
                     {t.symbol}
                   </button>
@@ -106,11 +124,15 @@ export function AmountStep({
           <div className="mt-3 pt-3 border-t border-zinc-800 space-y-1">
             <div className="flex justify-between text-xs text-zinc-500">
               <span>Protocol fee (0.25%)</span>
-              <span>−{fee.toFixed(2)} {token.symbol}</span>
+              <span>
+                −{fee.toFixed(2)} {token.symbol}
+              </span>
             </div>
             <div className="flex justify-between text-sm">
               <span className="text-zinc-400">Recipient receives</span>
-              <span className="text-zinc-100 font-medium">{receive.toFixed(2)} {token.symbol}</span>
+              <span className="text-zinc-100 font-medium">
+                {receive.toFixed(2)} {token.symbol}
+              </span>
             </div>
           </div>
         )}
@@ -121,13 +143,17 @@ export function AmountStep({
         <div className="rounded-xl border border-amber-900/50 bg-amber-950/20 px-3 py-2.5 mb-2 flex gap-2.5">
           <Warning size={13} weight="fill" className="text-amber-400 mt-0.5 shrink-0" />
           <p className="text-xs text-amber-400">
-            At this amount the fee is <strong>${fee.toFixed(0)}</strong>. Consider whether the privacy tradeoff is worth it.
+            At this amount the fee is <strong>${fee.toFixed(0)}</strong>. Consider whether the
+            privacy tradeoff is worth it.
           </p>
         </div>
       )}
 
       <div className="flex gap-3 mt-3">
-        <button onClick={onCancel} className="flex-1 py-2.5 rounded-full border border-zinc-700 text-sm text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors">
+        <button
+          onClick={onCancel}
+          className="flex-1 py-2.5 rounded-full border border-zinc-700 text-sm text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
+        >
           Cancel
         </button>
         <button

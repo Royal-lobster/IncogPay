@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
 import { Wallet } from "@phosphor-icons/react";
+import { useEffect } from "react";
 import { useAccount, useConnect } from "wagmi";
 import { injected, walletConnect } from "wagmi/connectors";
 
@@ -43,7 +43,13 @@ export function ConnectStep({
         </button>
 
         <button
-          onClick={() => connect({ connector: walletConnect({ projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay" }) })}
+          onClick={() =>
+            connect({
+              connector: walletConnect({
+                projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay",
+              }),
+            })
+          }
           disabled={isPending}
           className="w-full flex items-center gap-4 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-4 hover:border-zinc-600 transition-colors text-left"
         >

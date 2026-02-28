@@ -1,10 +1,10 @@
 "use client";
 
-import { X, Wallet, SignOut } from "@phosphor-icons/react";
+import { SignOut, Wallet, X } from "@phosphor-icons/react";
 import { useAccount, useConnect, useDisconnect } from "wagmi";
 import { injected, walletConnect } from "wagmi/connectors";
 
-function formatAddress(addr: string) {
+function _formatAddress(addr: string) {
   return `${addr.slice(0, 6)}…${addr.slice(-4)}`;
 }
 
@@ -30,10 +30,7 @@ export function WalletSwitcherModal({ onClose }: { onClose: () => void }) {
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800/60">
           <span className="text-sm font-medium text-zinc-300">Connected wallet</span>
-          <button
-            onClick={onClose}
-            className="text-zinc-600 hover:text-zinc-300 transition-colors"
-          >
+          <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 transition-colors">
             <X size={16} weight="bold" />
           </button>
         </div>
@@ -47,7 +44,9 @@ export function WalletSwitcherModal({ onClose }: { onClose: () => void }) {
 
           {/* Switch wallet */}
           <div>
-            <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-2">Switch wallet</p>
+            <p className="text-[10px] text-zinc-600 uppercase tracking-widest mb-2">
+              Switch wallet
+            </p>
             <div className="space-y-2">
               <button
                 onClick={() => connect({ connector: injected() })}

@@ -1,6 +1,6 @@
 "use client";
 
-import { X, Wallet } from "@phosphor-icons/react";
+import { Wallet, X } from "@phosphor-icons/react";
 import { useConnect } from "wagmi";
 import { injected, walletConnect } from "wagmi/connectors";
 
@@ -34,7 +34,10 @@ export function WalletConnectModal({ open, onClose }: WalletConnectModalProps) {
         </div>
         <div className="p-4 space-y-2">
           <button
-            onClick={() => { connect({ connector: injected() }); onClose(); }}
+            onClick={() => {
+              connect({ connector: injected() });
+              onClose();
+            }}
             disabled={isPending}
             className="w-full flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-2.5 hover:border-zinc-600 transition-colors text-left disabled:opacity-50"
           >
@@ -48,7 +51,11 @@ export function WalletConnectModal({ open, onClose }: WalletConnectModalProps) {
           </button>
           <button
             onClick={() => {
-              connect({ connector: walletConnect({ projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay" }) });
+              connect({
+                connector: walletConnect({
+                  projectId: process.env.NEXT_PUBLIC_WC_PROJECT_ID ?? "incogpay",
+                }),
+              });
               onClose();
             }}
             disabled={isPending}
