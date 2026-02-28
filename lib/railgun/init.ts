@@ -56,7 +56,7 @@ function createArtifactStore(): ArtifactStore {
 }
 
 // ── POI node URLs (public RAILGUN aggregators) ────────────────────────────
-const POI_NODES = ["https://poi-node.railgun.org"];
+const POI_NODES = ["https://ppoi-agg.horsewithsixlegs.xyz"];
 
 // ── RPC endpoints per network (CORS-friendly, browser-compatible) ────────
 const NETWORK_RPCS: Record<NetworkName, string[]> = {

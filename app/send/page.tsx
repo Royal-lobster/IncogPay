@@ -19,7 +19,7 @@ import { defineStepper } from "@stepperize/react";
 import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { parseUnits } from "viem";
 import {
@@ -39,11 +39,13 @@ import {
   getOrCreateWallet,
   getShieldContractAddress,
   getShieldSignMessage,
+  getSpendableBalances,
   populateShieldTx,
   privateSend,
   SIGN_MESSAGE,
   waitForSpendable,
 } from "@/lib/railgun";
+import { clearSendFlow, loadSendFlow, saveSendFlow } from "@/lib/send-flow-storage";
 import { SUPPORTED_CHAINS, type SupportedChain, TOKENS_BY_CHAIN } from "@/lib/wagmi";
 
 // ─── stepper ──────────────────────────────────────────────────────────────────
@@ -149,7 +151,7 @@ function friendlyError(err: unknown): string {
     return "Transaction rejected in wallet.";
   if (lower.includes("nonce"))
     return "Transaction conflict. Try again in a moment.";
-  if (lower.includes("network") || lower.includes("rpc") || lower.includes("timeout"))
+  if (lower.includes("network") || lower.includes("rpc") || lower.includes("timeout") || lower.includes("failed to fetch"))
     return "Network error. Check your connection and try again.";
   if (lower.includes("execution reverted"))
     return "Transaction would fail on-chain. Double-check your balance and try again.";
@@ -162,6 +164,14 @@ function friendlyError(err: unknown): string {
 }
 // ─── component ────────────────────────────────────────────────────────────────
 export default function SendPage() {
+  return (
+    <Suspense>
+      <SendPageInner />
+    </Suspense>
+  );
+}
+
+function SendPageInner() {
   const { isConnected, address } = useAccount();
   const { isPending: connectPending } = useConnect();
   const { signMessageAsync } = useSignMessage();
@@ -256,6 +266,95 @@ export default function SendPage() {
   const [shieldSubPhase, setShieldSubPhase] = useState<"approving" | "shielding">("approving");
   const [txHash, setTxHash] = useState<string | null>(null);
   const [mixingStartedAt, setMixingStartedAt] = useState<number | null>(null);
+  const [needsResign, setNeedsResign] = useState(false);
+  const [existingBalances, setExistingBalances] = useState<
+    { tokenAddress: string; amount: bigint; symbol: string }[] | null
+  >(null);
+  const [checkingBalances, setCheckingBalances] = useState(false);
+
+  // ── send state (declared early so persist effect can reference them)
+  const [sendSubLabel, setSendSubLabel] = useState<"proving" | "broadcasting">("proving");
+  const [sendAmount, setSendAmount] = useState("");
+  const [proofProgress, setProofProgress] = useState(0);
+
+  // ── restore persisted send flow on mount
+  useEffect(() => {
+    if (!mounted || !isConnected) return;
+
+    const saved = loadSendFlow();
+    if (!saved) return;
+
+    // Restore chain
+    const chain = SUPPORTED_CHAINS.find((c) => c.id === saved.chainId);
+    if (!chain) {
+      clearSendFlow();
+      return;
+    }
+
+    // Restore form values
+    form.setValue("chain", chain);
+    const token = TOKENS_BY_CHAIN[chain.id].find((t) => t.symbol === saved.intent.token);
+    if (token) form.setValue("token", token);
+    form.setValue("amount", saved.intent.amount);
+
+    // Restore flow state
+    setIntent(saved.intent);
+    setTxHash(saved.txHash);
+    setMixingStartedAt(saved.mixingStartedAt);
+    setRecipient(saved.recipient);
+    setSendAmount(saved.sendAmount);
+
+    // Navigate to saved phase
+    stepper.navigation.goTo(saved.phase);
+
+    // If mixing or send phase, wallet encryption key is lost on refresh — need re-sign
+    if ((saved.phase === "mixing" || saved.phase === "send") && !getCachedWallet()) {
+      setNeedsResign(true);
+    }
+  }, [mounted, isConnected]);
+
+  // ── persist flow state on change
+  useEffect(() => {
+    if (!intent) return;
+    saveSendFlow({
+      phase: phase as "shield" | "mixing" | "send",
+      intent,
+      chainId: formChain.id,
+      txHash,
+      mixingStartedAt,
+      recipient,
+      sendAmount,
+    });
+  }, [phase, intent, txHash, mixingStartedAt, recipient, sendAmount, formChain.id]);
+
+  // ── check for existing spendable balances (after signing to resume or fresh connect)
+  const checkExistingBalances = async () => {
+    const wallet = getCachedWallet();
+    if (!wallet) return;
+
+    setCheckingBalances(true);
+    try {
+      const tokens = TOKENS_BY_CHAIN[formChain.id];
+      const balances = await getSpendableBalances(
+        formChain.id,
+        wallet.walletId,
+        tokens.map((t) => t.address),
+      );
+
+      if (balances.length > 0) {
+        setExistingBalances(
+          balances.map((b) => ({
+            ...b,
+            symbol: tokens.find((t) => t.address === b.tokenAddress)?.symbol ?? "???",
+          })),
+        );
+      }
+    } catch {
+      // Balance check failed — not critical, just skip
+    } finally {
+      setCheckingBalances(false);
+    }
+  };
 
   const shieldMutation = useMutation({
     mutationFn: async () => {
@@ -326,7 +425,7 @@ export default function SendPage() {
   const [poiStatus, setPoiStatus] = useState<string>("Waiting for privacy verification...");
 
   useEffect(() => {
-    if (phase !== "mixing") return;
+    if (phase !== "mixing" || needsResign) return;
 
     const wallet = getCachedWallet();
     if (!wallet) return;
@@ -350,13 +449,9 @@ export default function SendPage() {
       });
 
     return () => abortController.abort();
-  }, [phase]);
+  }, [phase, needsResign]);
 
   // ── send mutation
-  const [sendSubLabel, setSendSubLabel] = useState<"proving" | "broadcasting">("proving");
-  const [sendAmount, setSendAmount] = useState("");
-  const [proofProgress, setProofProgress] = useState(0);
-
   const sendMutation = useMutation({
     mutationFn: async () => {
       if (!intent) throw new Error("No intent");
@@ -389,11 +484,14 @@ export default function SendPage() {
       return result;
     },
     onSuccess: () => {
+      clearSendFlow();
       setTimeout(() => stepper.navigation.goTo("done"), 600);
     },
   });
 
-  const sendAvail = intent ? parseFloat(intent.amount) * (1 - 0.0025) : 0;
+  const sendAvailRaw = intent ? parseFloat(intent.amount) * (1 - 0.0025) : 0;
+  // Floor to 2 decimals so the displayed "Available" matches what validation accepts
+  const sendAvail = Math.floor(sendAvailRaw * 100) / 100;
   const isValidRecipient =
     (recipient.startsWith("0x") && recipient.length === 42) ||
     recipient.startsWith("0zk");
@@ -515,6 +613,75 @@ export default function SendPage() {
               {/* ── form ── */}
               {phase === "form" && (
                 <>
+                  {/* Existing private balance banner */}
+                  {existingBalances && existingBalances.length > 0 && (
+                    <div className="rounded-xl border border-emerald-900/50 bg-emerald-950/20 p-3 space-y-2">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck size={13} weight="duotone" className="text-emerald-400 shrink-0" />
+                        <p className="text-xs font-medium text-emerald-300">
+                          You have private funds ready to send
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        {existingBalances.map((b) => {
+                          const tokenInfo = TOKENS_BY_CHAIN[formChain.id].find(
+                            (t) => t.address === b.tokenAddress,
+                          );
+                          const decimals = tokenInfo?.decimals ?? 18;
+                          const display = (Number(b.amount) / 10 ** decimals).toFixed(2);
+                          return (
+                            <div key={b.tokenAddress} className="flex justify-between text-xs px-0.5">
+                              <span className="text-zinc-400">{b.symbol}</span>
+                              <span className="text-zinc-200 font-medium">{display}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <button
+                        onClick={() => {
+                          // Pick the first token with balance and jump to send
+                          const first = existingBalances[0];
+                          const tokenInfo = TOKENS_BY_CHAIN[formChain.id].find(
+                            (t) => t.address === first.tokenAddress,
+                          );
+                          if (tokenInfo) {
+                            const decimals = tokenInfo.decimals;
+                            const amount = (Number(first.amount) / 10 ** decimals).toFixed(2);
+                            setIntent({ amount, token: tokenInfo.symbol });
+                            form.setValue("token", tokenInfo);
+                            form.setValue("amount", amount);
+                          }
+                          stepper.navigation.goTo("send");
+                        }}
+                        className="w-full py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 transition-colors"
+                      >
+                        Skip to Send →
+                      </button>
+                    </div>
+                  )}
+                  {checkingBalances && (
+                    <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3 py-2.5">
+                      <CircleNotch size={12} className="animate-spin text-zinc-500 shrink-0" />
+                      <p className="text-xs text-zinc-500">Checking for existing private funds…</p>
+                    </div>
+                  )}
+                  {!existingBalances && !checkingBalances && (
+                    <button
+                      onClick={async () => {
+                        try {
+                          const sig = await signMessageAsync({ message: SIGN_MESSAGE });
+                          await getOrCreateWallet(sig);
+                          await checkExistingBalances();
+                        } catch {
+                          // User rejected sign or check failed — ignore
+                        }
+                      }}
+                      className="flex items-center gap-2 rounded-xl border border-dashed border-zinc-700 bg-zinc-900/20 px-3 py-2.5 text-xs text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors w-full"
+                    >
+                      <ShieldCheck size={12} weight="duotone" className="shrink-0" />
+                      Already shielded funds? Sign to check balance
+                    </button>
+                  )}
                   <div>
                     <h2 className="text-sm font-semibold text-zinc-100">Enter Amount</h2>
                     <p className="text-xs text-zinc-500 mt-1">
@@ -765,17 +932,31 @@ export default function SendPage() {
                       <p className="text-xs text-zinc-500 mt-0.5">{PROGRESS_META.mixing.sub}</p>
                     </div>
                   </div>
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-                    <div className="flex items-center gap-3">
-                      <CircleNotch size={16} className="animate-spin text-pink-400 shrink-0" />
-                      <div>
-                        <p className="text-sm text-zinc-300">{poiStatus}</p>
-                        <p className="text-xs text-zinc-600 mt-0.5">
-                          This typically takes a few minutes
-                        </p>
+                  {needsResign ? (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <Wallet size={16} weight="duotone" className="text-pink-400 shrink-0" />
+                        <div>
+                          <p className="text-sm text-zinc-300">Session restored</p>
+                          <p className="text-xs text-zinc-600 mt-0.5">
+                            Sign to unlock your private wallet and resume mixing.
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+                      <div className="flex items-center gap-3">
+                        <CircleNotch size={16} className="animate-spin text-pink-400 shrink-0" />
+                        <div>
+                          <p className="text-sm text-zinc-300">{poiStatus}</p>
+                          <p className="text-xs text-zinc-600 mt-0.5">
+                            This typically takes a few minutes
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {txHash && (
                     <a
                       href={`https://arbiscan.io/tx/${txHash}`}
@@ -809,60 +990,76 @@ export default function SendPage() {
                       <p className="text-xs text-zinc-500 mt-0.5">{PROGRESS_META.send.sub}</p>
                     </div>
                   </div>
-                  <div className="flex justify-between text-xs px-0.5">
-                    <span className="text-zinc-600">Available</span>
-                    <span className="text-zinc-400">
-                      {sendAvail.toFixed(2)} {intent.token}
-                    </span>
-                  </div>
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
-                    <div className="px-4 pt-3.5 pb-3 border-b border-zinc-800/60">
-                      <div className="text-xs text-zinc-500 mb-1.5">Recipient address</div>
-                      <input
-                        type="text"
-                        value={recipient}
-                        onChange={(e) => setRecipient(e.target.value)}
-                        placeholder="0x…"
-                        className="w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-700 focus:outline-none font-mono"
-                      />
-                    </div>
-                    <div className="px-4 pt-3 pb-3.5">
-                      <div className="text-xs text-zinc-500 mb-1.5">Amount</div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="number"
-                          value={sendAmount}
-                          onChange={(e) => setSendAmount(e.target.value)}
-                          max={sendAvail}
-                          min={0}
-                          className="flex-1 bg-transparent text-xl font-semibold text-zinc-100 focus:outline-none"
-                        />
-                        <span className="text-xs text-zinc-500">{intent.token}</span>
-                        <button
-                          onClick={() => setSendAmount(sendAvail.toFixed(2))}
-                          className="text-[10px] font-medium text-pink-400 border border-pink-500/30 rounded-full px-2 py-1 hover:bg-pink-500/10 transition-colors uppercase tracking-widest"
-                        >
-                          Max
-                        </button>
+                  {needsResign ? (
+                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <Wallet size={16} weight="duotone" className="text-pink-400 shrink-0" />
+                        <div>
+                          <p className="text-sm text-zinc-300">Session restored</p>
+                          <p className="text-xs text-zinc-600 mt-0.5">
+                            Sign to unlock your private wallet and continue sending.
+                          </p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="flex gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3 py-2.5">
-                    <ShieldCheck
-                      size={12}
-                      weight="duotone"
-                      className="text-emerald-400 mt-0.5 shrink-0"
-                    />
-                    <p className="text-xs text-zinc-500">
-                      Recipient sees funds from the RAILGUN relayer — not your wallet.
-                    </p>
-                  </div>
-                  {sendMutation.isError && (
-                    <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-3 py-2.5">
-                      <p className="text-xs text-red-400">
-                        {friendlyError(sendMutation.error)}
-                      </p>
-                    </div>
+                  ) : (
+                    <>
+                      <div className="flex justify-between text-xs px-0.5">
+                        <span className="text-zinc-600">Available</span>
+                        <span className="text-zinc-400">
+                          {sendAvail.toFixed(2)} {intent.token}
+                        </span>
+                      </div>
+                      <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
+                        <div className="px-4 pt-3.5 pb-3 border-b border-zinc-800/60">
+                          <div className="text-xs text-zinc-500 mb-1.5">Recipient address</div>
+                          <input
+                            type="text"
+                            value={recipient}
+                            onChange={(e) => setRecipient(e.target.value)}
+                            placeholder="0x…"
+                            className="w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-700 focus:outline-none font-mono"
+                          />
+                        </div>
+                        <div className="px-4 pt-3 pb-3.5">
+                          <div className="text-xs text-zinc-500 mb-1.5">Amount</div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              value={sendAmount}
+                              onChange={(e) => setSendAmount(e.target.value)}
+                              max={sendAvail}
+                              min={0}
+                              className="flex-1 bg-transparent text-xl font-semibold text-zinc-100 focus:outline-none"
+                            />
+                            <span className="text-xs text-zinc-500">{intent.token}</span>
+                            <button
+                              onClick={() => setSendAmount(sendAvail.toFixed(2))}
+                              className="text-[10px] font-medium text-pink-400 border border-pink-500/30 rounded-full px-2 py-1 hover:bg-pink-500/10 transition-colors uppercase tracking-widest"
+                            >
+                              Max
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3 py-2.5">
+                        <ShieldCheck
+                          size={12}
+                          weight="duotone"
+                          className="text-emerald-400 mt-0.5 shrink-0"
+                        />
+                        <p className="text-xs text-zinc-500">
+                          Recipient sees funds from the RAILGUN relayer — not your wallet.
+                        </p>
+                      </div>
+                      {sendMutation.isError && (
+                        <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-3 py-2.5">
+                          <p className="text-xs text-red-400">
+                            {friendlyError(sendMutation.error)}
+                          </p>
+                        </div>
+                      )}
+                    </>
                   )}
                 </>
               )}
@@ -896,7 +1093,10 @@ export default function SendPage() {
               {phase === "form" && (
                 <div className="flex gap-3">
                   <button
-                    onClick={() => stepper.navigation.goTo("connect")}
+                    onClick={() => {
+                      clearSendFlow();
+                      stepper.navigation.goTo("connect");
+                    }}
                     className="flex-1 py-2.5 rounded-full border border-zinc-700 text-sm text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
                   >
                     Cancel
@@ -948,31 +1148,62 @@ export default function SendPage() {
 
               {/* mixing */}
               {phase === "mixing" && (
-                <button
-                  onClick={() => stepper.navigation.goTo("form")}
-                  className="w-full text-xs text-zinc-600 hover:text-red-400 transition-colors py-1"
-                >
-                  Cancel &amp; return funds to wallet
-                </button>
+                needsResign ? (
+                  <button
+                    onClick={async () => {
+                      const sig = await signMessageAsync({ message: SIGN_MESSAGE });
+                      await getOrCreateWallet(sig);
+                      setNeedsResign(false);
+                    }}
+                    className="w-full py-2.5 rounded-full bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Wallet size={14} weight="duotone" />
+                    Sign to Resume
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      clearSendFlow();
+                      stepper.navigation.goTo("form");
+                    }}
+                    className="w-full text-xs text-zinc-600 hover:text-red-400 transition-colors py-1"
+                  >
+                    Cancel &amp; return funds to wallet
+                  </button>
+                )
               )}
 
               {/* send */}
               {phase === "send" && (
-                <>
+                needsResign ? (
                   <button
-                    onClick={() => sendMutation.mutate()}
-                    disabled={!sendValid || sendMutation.isPending}
-                    className={`w-full py-2.5 rounded-full text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${!sendValid || sendMutation.isPending ? "bg-zinc-800 text-zinc-600 cursor-not-allowed" : "bg-white text-black hover:bg-zinc-200"}`}
+                    onClick={async () => {
+                      const sig = await signMessageAsync({ message: SIGN_MESSAGE });
+                      await getOrCreateWallet(sig);
+                      setNeedsResign(false);
+                    }}
+                    className="w-full py-2.5 rounded-full bg-white text-black text-sm font-semibold hover:bg-zinc-200 transition-colors flex items-center justify-center gap-2"
                   >
-                    {sendMutation.isPending && <CircleNotch size={13} className="animate-spin" />}
-                    {sendButtonLabel}
+                    <Wallet size={14} weight="duotone" />
+                    Sign to Resume
                   </button>
-                  {sendMutation.isPending && sendSubLabel === "proving" && (
-                    <p className="text-center text-[11px] text-zinc-600 mt-1.5">
-                      Generating ZK proof… {proofProgress}%
-                    </p>
-                  )}
-                </>
+                ) : (
+                  <>
+                    <button
+                      onClick={() => sendMutation.mutate()}
+                      disabled={!sendValid || sendMutation.isPending}
+                      className={`w-full py-2.5 rounded-full text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${!sendValid || sendMutation.isPending ? "bg-zinc-800 text-zinc-600 cursor-not-allowed" : "bg-white text-black hover:bg-zinc-200"}`}
+                    >
+                      {sendMutation.isPending && <CircleNotch size={13} className="animate-spin" />}
+                      {sendButtonLabel}
+                    </button>
+                    {sendMutation.isPending && sendSubLabel === "proving" && (
+                      <p className="text-center text-[11px] text-zinc-600 mt-1.5">
+                        Generating ZK proof… {proofProgress}%
+                      </p>
+                    )}
+                  </>
+                )
               )}
 
               {/* done */}
