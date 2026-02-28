@@ -1,9 +1,8 @@
 import type {
-  EVMGasType,
   RailgunERC20AmountRecipient,
   TransactionGasDetails,
 } from "@railgun-community/shared-models";
-import { NETWORK_CONFIG } from "@railgun-community/shared-models";
+import { EVMGasType, NETWORK_CONFIG } from "@railgun-community/shared-models";
 import {
   gasEstimateForShield,
   getShieldPrivateKeySignatureMessage,
@@ -67,13 +66,21 @@ export async function populateShieldTx(
     fromWalletAddress,
   );
 
-  // Build gas details — use Type0 (gasPrice-based) as a safe default.
-  // The caller can override with EIP-1559 gas details if desired.
-  const gasDetails: TransactionGasDetails = {
-    evmGasType: 0 as EVMGasType.Type0,
-    gasEstimate: gasEstimate.gasEstimate,
-    gasPrice: gasEstimate.gasEstimate, // placeholder — caller should set actual gas price
-  };
+  // Build gas details using the network's expected gas type.
+  const { defaultEVMGasType } = NETWORK_CONFIG[networkName];
+  const gasDetails: TransactionGasDetails =
+    defaultEVMGasType === EVMGasType.Type2
+      ? {
+          evmGasType: EVMGasType.Type2,
+          gasEstimate: gasEstimate.gasEstimate,
+          maxFeePerGas: BigInt(2_000_000_000), // 2 gwei placeholder — wallet overrides on send
+          maxPriorityFeePerGas: BigInt(100_000_000), // 0.1 gwei placeholder
+        }
+      : {
+          evmGasType: EVMGasType.Type0,
+          gasEstimate: gasEstimate.gasEstimate,
+          gasPrice: BigInt(2_000_000_000), // 2 gwei placeholder — wallet overrides on send
+        };
 
   const { transaction } = await populateShield(
     TXID_VERSION,

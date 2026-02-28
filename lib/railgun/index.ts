@@ -1,3 +1,5 @@
+export { getSpendableBalances } from "./balance";
+export type { TokenBalance } from "./balance";
 export { ensureEngine, ensureProvider } from "./init";
 export { CHAIN_TO_NETWORK, getNetworkName, TXID_VERSION } from "./networks";
 export { waitForSpendable } from "./poi";

@@ -1,10 +1,9 @@
 import type {
-  EVMGasType,
   FeeTokenDetails,
   RailgunERC20AmountRecipient,
   TransactionGasDetails,
 } from "@railgun-community/shared-models";
-import { NETWORK_CONFIG } from "@railgun-community/shared-models";
+import { EVMGasType, NETWORK_CONFIG } from "@railgun-community/shared-models";
 import {
   gasEstimateForUnprovenUnshield,
   generateUnshieldProof,
@@ -69,13 +68,21 @@ export async function privateSend(
   // ── Step 2: Estimate gas ───────────────────────────────────────────────
   onProgress?.("Estimating gas...");
 
-  // The SDK requires originalGasDetails as a TransactionGasDetails.
-  // Use Type0 as an initial estimate placeholder.
-  const dummyGasDetails: TransactionGasDetails = {
-    evmGasType: 0 as EVMGasType.Type0,
-    gasEstimate: BigInt(0),
-    gasPrice: BigInt(0),
-  };
+  // The SDK requires originalGasDetails matching the network's expected gas type.
+  const { defaultEVMGasType } = NETWORK_CONFIG[networkName];
+  const dummyGasDetails: TransactionGasDetails =
+    defaultEVMGasType === EVMGasType.Type2
+      ? {
+          evmGasType: EVMGasType.Type2,
+          gasEstimate: BigInt(0),
+          maxFeePerGas: BigInt(0),
+          maxPriorityFeePerGas: BigInt(0),
+        }
+      : {
+          evmGasType: EVMGasType.Type0,
+          gasEstimate: BigInt(0),
+          gasPrice: BigInt(0),
+        };
 
   const gasEstimate = await gasEstimateForUnprovenUnshield(
     TXID_VERSION,
@@ -114,11 +121,19 @@ export async function privateSend(
   // ── Step 4: Populate proved transaction ────────────────────────────────
   onProgress?.("Preparing transaction...");
 
-  const finalGasDetails: TransactionGasDetails = {
-    evmGasType: 0 as EVMGasType.Type0,
-    gasEstimate: gasEstimate.gasEstimate,
-    gasPrice: overallBatchMinGasPrice,
-  };
+  const finalGasDetails: TransactionGasDetails =
+    defaultEVMGasType === EVMGasType.Type2
+      ? {
+          evmGasType: EVMGasType.Type2,
+          gasEstimate: gasEstimate.gasEstimate,
+          maxFeePerGas: overallBatchMinGasPrice,
+          maxPriorityFeePerGas: overallBatchMinGasPrice,
+        }
+      : {
+          evmGasType: EVMGasType.Type0,
+          gasEstimate: gasEstimate.gasEstimate,
+          gasPrice: overallBatchMinGasPrice,
+        };
 
   const populateResult = await populateProvedUnshield(
     TXID_VERSION,
