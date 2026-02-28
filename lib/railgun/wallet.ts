@@ -21,7 +21,10 @@ export async function getOrCreateWallet(signature: string): Promise<RailgunWalle
 
   await ensureEngine();
 
-  const encryptionKey = keccak256(getBytes(signature));
+  // RAILGUN SDK's AES expects raw hex without 0x prefix.
+  // keccak256() returns 0x-prefixed, and the SDK's fastHexToBytes does NOT strip it,
+  // so "0x" + 64 hex chars (66 chars) → 33 bytes instead of 32.
+  const encryptionKey = keccak256(getBytes(signature)).slice(2);
 
   // Check if we have a stored wallet ID from a previous session
   const storedId = localStorage.getItem(STORAGE_KEY);
