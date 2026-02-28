@@ -167,6 +167,10 @@ export default function SendPage() {
   const { sendTransactionAsync } = useSendTransaction();
   const { writeContractAsync } = useWriteContract();
 
+  // ── hydration guard: defer client-only state to avoid SSR mismatch
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
   // ── stepper
   const stepper = useStepper({ initialStep: isConnected ? "form" : "connect" });
   const phase = stepper.state.current.data.id;
@@ -400,7 +404,7 @@ export default function SendPage() {
               <ArrowLeft size={12} weight="bold" />
               Back
             </Link>
-            {isConnected && address && (
+            {mounted && isConnected && address && (
               <button
                 onClick={() => setSwitcherOpen(true)}
                 className="flex items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/50 px-2.5 py-1 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-200 transition-colors"
