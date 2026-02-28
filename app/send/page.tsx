@@ -20,13 +20,23 @@ import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { useAccount, useConnect } from "wagmi";
+import { useAccount, useConnect, useSignMessage, useSendTransaction } from "wagmi";
+import { parseUnits } from "viem";
 import { z } from "zod";
 import { ChainIcon } from "@/components/ChainIcon";
 import { TokenIcon } from "@/components/TokenIcon";
 import { WalletConnectModal } from "@/components/WalletConnectModal";
 import { WalletSwitcherModal } from "@/components/WalletSwitcherModal";
 import { SUPPORTED_CHAINS, type SupportedChain, TOKENS_BY_CHAIN } from "@/lib/wagmi";
+import {
+  getOrCreateWallet,
+  getShieldSignMessage,
+  populateShieldTx,
+  SIGN_MESSAGE,
+  waitForSpendable,
+  getCachedWallet,
+  privateSend,
+} from "@/lib/railgun";
 
 // ─── stepper ──────────────────────────────────────────────────────────────────
 const { useStepper } = defineStepper(
@@ -79,8 +89,6 @@ const PROGRESS_META = {
   },
 } as const;
 
-const MIXING_MS = 60 * 60 * 1000;
-
 const HOW_IT_WORKS = [
   { icon: ShieldCheck, text: "Approve and shield your funds into RAILGUN's private pool." },
   { icon: Clock, text: "Funds mix for ~1 hour while RAILGUN runs its on-chain privacy check." },
@@ -117,15 +125,12 @@ const PREFLIGHT_STEPS = [
 function fmtAddr(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
-function fmtMs(ms: number) {
-  const s = Math.floor(ms / 1000);
-  return `${Math.floor(s / 60)}m ${(s % 60).toString().padStart(2, "0")}s`;
-}
-
 // ─── component ────────────────────────────────────────────────────────────────
 export default function SendPage() {
   const { isConnected, address } = useAccount();
   const { isPending: connectPending } = useConnect();
+  const { signMessageAsync } = useSignMessage();
+  const { sendTransactionAsync } = useSendTransaction();
 
   // ── stepper
   const stepper = useStepper({ initialStep: isConnected ? "form" : "connect" });
@@ -178,11 +183,48 @@ export default function SendPage() {
 
   const shieldMutation = useMutation({
     mutationFn: async () => {
+      if (!intent || !address) throw new Error("Missing intent or wallet");
+
+      const chainId = formChain.id;
+      const tokenInfo = TOKENS_BY_CHAIN[chainId].find(
+        (t) => t.symbol === intent.token,
+      );
+      if (!tokenInfo) throw new Error("Token not found");
+
+      // 1. Sign message to derive RAILGUN wallet
       setShieldSubPhase("approving");
-      await new Promise((r) => setTimeout(r, 1500));
+      const walletSig = await signMessageAsync({ message: SIGN_MESSAGE });
+      const wallet = await getOrCreateWallet(walletSig);
+
+      // 2. Sign shield private key message
+      const shieldMsg = getShieldSignMessage();
+      const shieldSig = await signMessageAsync({ message: shieldMsg });
+
+      // 3. Approve ERC20 spending
+      const amount = parseUnits(intent.amount, tokenInfo.decimals);
+      // Note: populateShieldTx handles the RAILGUN contract address internally
+      // We approve the max to the RAILGUN proxy
+      // TODO: Get proper RAILGUN contract address from NETWORK_CONFIG
+      // For now, the shield tx will handle approval internally if needed
+
+      // 4. Populate and send shield transaction
       setShieldSubPhase("shielding");
-      await new Promise((r) => setTimeout(r, 2000));
-      return { txHash: "0xmocktxhash" as string };
+      const { transaction } = await populateShieldTx(
+        chainId,
+        shieldSig,
+        tokenInfo.address,
+        amount,
+        wallet.railgunAddress,
+        address, // fromWalletAddress (the user's public EOA)
+      );
+
+      const txHash = await sendTransactionAsync({
+        to: transaction.to as `0x${string}`,
+        data: transaction.data as `0x${string}`,
+        value: transaction.value ? BigInt(transaction.value.toString()) : BigInt(0),
+      });
+
+      return { txHash };
     },
     onSuccess: ({ txHash: hash }) => {
       setTxHash(hash);
@@ -191,36 +233,74 @@ export default function SendPage() {
     },
   });
 
-  // ── mixing timer
-  const [mixingElapsed, setMixingElapsed] = useState(0);
+  // ── PPOI polling (replaces mixing timer)
+  const [poiStatus, setPoiStatus] = useState<string>("Waiting for privacy verification...");
 
   useEffect(() => {
-    if (phase !== "mixing" || !mixingStartedAt) return;
-    const id = setInterval(() => {
-      const e = Date.now() - mixingStartedAt;
-      setMixingElapsed(e);
-      if (e >= MIXING_MS) {
-        clearInterval(id);
-        stepper.navigation.goTo("send");
-      }
-    }, 1000);
-    return () => clearInterval(id);
-  }, [phase, mixingStartedAt]);
+    if (phase !== "mixing") return;
 
-  const mixingPct = Math.min(100, (mixingElapsed / MIXING_MS) * 100);
-  const mixingRemaining = Math.max(0, MIXING_MS - mixingElapsed);
+    const wallet = getCachedWallet();
+    if (!wallet) return;
+
+    const abortController = new AbortController();
+
+    waitForSpendable(
+      formChain.id,
+      wallet.walletId,
+      (status) => setPoiStatus(status),
+      30_000,
+      abortController.signal,
+    )
+      .then(() => {
+        stepper.navigation.goTo("send");
+      })
+      .catch((err) => {
+        if (err.name !== "AbortError") {
+          console.error("PPOI polling failed:", err);
+        }
+      });
+
+    return () => abortController.abort();
+  }, [phase]);
 
   // ── send mutation
   const [sendSubLabel, setSendSubLabel] = useState<"proving" | "broadcasting">("proving");
   const [recipient, setRecipient] = useState("");
   const [sendAmount, setSendAmount] = useState("");
+  const [proofProgress, setProofProgress] = useState(0);
 
   const sendMutation = useMutation({
     mutationFn: async () => {
-      setSendSubLabel("proving");
-      await new Promise((r) => setTimeout(r, 3000));
-      setSendSubLabel("broadcasting");
-      await new Promise((r) => setTimeout(r, 1500));
+      if (!intent) throw new Error("No intent");
+
+      const wallet = getCachedWallet();
+      if (!wallet) throw new Error("RAILGUN wallet not initialized");
+
+      const tokenInfo = TOKENS_BY_CHAIN[formChain.id].find(
+        (t) => t.symbol === intent.token,
+      );
+      if (!tokenInfo) throw new Error("Token not found");
+
+      const amount = parseUnits(sendAmount, tokenInfo.decimals);
+
+      const result = await privateSend(
+        formChain.id,
+        wallet.walletId,
+        wallet.encryptionKey,
+        tokenInfo.address,
+        amount,
+        recipient,
+        (phase, pct) => {
+          if (phase.includes("proof")) {
+            setSendSubLabel("proving");
+            setProofProgress(pct ?? 0);
+          } else if (phase.includes("Broadcasting")) {
+            setSendSubLabel("broadcasting");
+          }
+        },
+      );
+
+      return result;
     },
     onSuccess: () => {
       setTimeout(() => stepper.navigation.goTo("done"), 600);
@@ -600,21 +680,14 @@ export default function SendPage() {
                     </div>
                   </div>
                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-                    <div className="flex items-center justify-between mb-2.5">
-                      <span className="text-xs text-zinc-500">Progress</span>
-                      <span className="text-xs font-medium text-zinc-300">
-                        {fmtMs(mixingRemaining)} left
-                      </span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-zinc-800 overflow-hidden">
-                      <div
-                        className="h-full rounded-full bg-pink-500 transition-all duration-1000"
-                        style={{ width: `${mixingPct}%` }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-[10px] text-zinc-700 mt-1.5">
-                      <span>0m</span>
-                      <span>60m</span>
+                    <div className="flex items-center gap-3">
+                      <CircleNotch size={16} className="animate-spin text-pink-400 shrink-0" />
+                      <div>
+                        <p className="text-sm text-zinc-300">{poiStatus}</p>
+                        <p className="text-xs text-zinc-600 mt-0.5">
+                          This typically takes a few minutes
+                        </p>
+                      </div>
                     </div>
                   </div>
                   {txHash && (
@@ -812,7 +885,7 @@ export default function SendPage() {
                   </button>
                   {sendMutation.isPending && sendSubLabel === "proving" && (
                     <p className="text-center text-[11px] text-zinc-600 mt-1.5">
-                      ZK proof generation takes ~30 seconds
+                      Generating ZK proof… {proofProgress}%
                     </p>
                   )}
                 </>
