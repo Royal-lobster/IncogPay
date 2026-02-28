@@ -20,6 +20,12 @@ type ShieldStatus = "idle" | "approving" | "shielding" | "error";
 type SendStatus   = "idle" | "proving" | "broadcasting" | "done" | "error";
 
 const PROGRESS: ["shield", "mixing", "send"] = ["shield", "mixing", "send"];
+
+const PROGRESS_META = {
+  shield: { icon: ShieldCheck, label: "Shield funds",   heading: "Shield Funds",    sub: "Approve and deposit into RAILGUN's private pool." },
+  mixing: { icon: Clock,       label: "Mixing",         heading: "Mixing in Pool",  sub: "ZK privacy check is running on-chain. Your funds are safe." },
+  send:   { icon: PaperPlaneTilt, label: "Send",        heading: "Confirm & Send",  sub: "Generate a ZK proof and send via relayer. No ETH needed." },
+} as const;
 const MIXING_MS = 60 * 60 * 1000;
 
 const HOW_IT_WORKS = [
@@ -366,16 +372,18 @@ export default function SendPage() {
 
               {/* ── progress tracker (shield / mixing / send) ── */}
               {isProgress && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   {PROGRESS.map((s, i) => {
                     const active = phase === s;
                     const done   = progressIdx > i;
+                    const meta   = PROGRESS_META[s];
                     return (
-                      <div key={s} className="flex items-center gap-2">
-                        {i > 0 && <div className={`w-5 h-px ${done ? "bg-pink-500" : "bg-zinc-800"}`} />}
-                        <span className={`text-[10px] font-medium capitalize ${active ? "text-pink-400" : done ? "text-zinc-600" : "text-zinc-700"}`}>
-                          {s}
-                        </span>
+                      <div key={s} className="flex items-center gap-1.5">
+                        {i > 0 && <div className={`w-4 h-px shrink-0 ${done ? "bg-pink-500" : "bg-zinc-800"}`} />}
+                        <div className={`flex items-center gap-1 ${active ? "text-pink-400" : done ? "text-zinc-600" : "text-zinc-700"}`}>
+                          <meta.icon size={11} weight={active ? "duotone" : "regular"} />
+                          <span className="text-[10px] font-medium">{meta.label}</span>
+                        </div>
                       </div>
                     );
                   })}
@@ -385,6 +393,15 @@ export default function SendPage() {
               {/* ── shield ── */}
               {phase === "shield" && intent && (
                 <>
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/10 ring-1 ring-pink-500/20">
+                      <ShieldCheck size={17} weight="duotone" className="text-pink-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-sm font-semibold text-zinc-100">{PROGRESS_META.shield.heading}</h2>
+                      <p className="text-xs text-zinc-500 mt-0.5">{PROGRESS_META.shield.sub}</p>
+                    </div>
+                  </div>
                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-2">
                     <div className="flex justify-between text-sm">
                       <span className="text-zinc-400">You deposit</span>
@@ -414,6 +431,15 @@ export default function SendPage() {
               {/* ── mixing ── */}
               {phase === "mixing" && (
                 <>
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/10 ring-1 ring-pink-500/20">
+                      <Clock size={17} weight="duotone" className="text-pink-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-sm font-semibold text-zinc-100">{PROGRESS_META.mixing.heading}</h2>
+                      <p className="text-xs text-zinc-500 mt-0.5">{PROGRESS_META.mixing.sub}</p>
+                    </div>
+                  </div>
                   <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
                     <div className="flex items-center justify-between mb-2.5">
                       <span className="text-xs text-zinc-500">Progress</span>
@@ -441,6 +467,15 @@ export default function SendPage() {
               {/* ── send ── */}
               {phase === "send" && intent && (
                 <>
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/10 ring-1 ring-pink-500/20">
+                      <PaperPlaneTilt size={17} weight="duotone" className="text-pink-400" />
+                    </div>
+                    <div>
+                      <h2 className="text-sm font-semibold text-zinc-100">{PROGRESS_META.send.heading}</h2>
+                      <p className="text-xs text-zinc-500 mt-0.5">{PROGRESS_META.send.sub}</p>
+                    </div>
+                  </div>
                   <div className="flex justify-between text-xs px-0.5">
                     <span className="text-zinc-600">Available</span>
                     <span className="text-zinc-400">{sendAvail.toFixed(2)} {intent.token}</span>
