@@ -59,8 +59,8 @@ function createArtifactStore(): ArtifactStore {
 const POI_NODES = ["https://ppoi-agg.horsewithsixlegs.xyz"];
 
 // ── RPC endpoints per network ────────────────────────────────────────────
-// Primary: our own API proxy (same-origin, no CORS issues).
-// Fallback: direct public RPCs (may be CORS-blocked from some origins).
+// Uses our own API proxy (same-origin, no CORS) as both providers.
+// The RAILGUN SDK requires ≥2 providers for its FallbackProvider config.
 function getBaseUrl(): string {
   if (typeof window !== "undefined") return window.location.origin;
   return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -72,14 +72,6 @@ const PROXY_NETWORKS: Record<NetworkName, string> = {
   [NetworkName.Polygon]: "polygon",
   [NetworkName.BNBChain]: "bnb",
 } as Record<NetworkName, string>;
-
-function getRPCs(networkName: NetworkName): string[] {
-  const proxyKey = PROXY_NETWORKS[networkName];
-  const base = getBaseUrl();
-  return proxyKey
-    ? [`${base}/api/rpc/${proxyKey}`]
-    : [];
-}
 
 // ── public API ────────────────────────────────────────────────────────────
 
@@ -104,33 +96,28 @@ export async function ensureProvider(networkName: NetworkName): Promise<void> {
 
   if (loadedProviders.has(networkName)) return;
 
-  const rpcs = getRPCs(networkName);
-  if (!rpcs || rpcs.length === 0) throw new Error(`No RPC configured for ${networkName}`);
+  const proxyKey = PROXY_NETWORKS[networkName];
+  if (!proxyKey) throw new Error(`No RPC configured for ${networkName}`);
 
+  const base = getBaseUrl();
+  const proxyUrl = `${base}/api/rpc/${proxyKey}`;
   const { chain } = NETWORK_CONFIG[networkName];
 
-  // Try each RPC individually — avoids FallbackProvider quorum issues
-  // where slight sync differences between RPCs cause failures.
-  for (let i = 0; i < rpcs.length; i++) {
-    try {
-      console.log(`[IncogPay] Trying RPC ${i + 1}/${rpcs.length} for ${networkName}: ${rpcs[i]}`);
-      await loadProvider(
-        {
-          chainId: chain.id,
-          providers: [{ provider: rpcs[i], priority: 1, weight: 1 }],
-        },
-        networkName,
-      );
-      loadedProviders.add(networkName);
-      console.log(`[IncogPay] Provider loaded for ${networkName} using ${rpcs[i]}`);
-      return;
-    } catch (err) {
-      console.warn(`[IncogPay] RPC ${rpcs[i]} failed for ${networkName}:`, err);
-      if (i === rpcs.length - 1) throw err;
-      // Small delay before trying next RPC
-      await new Promise((r) => setTimeout(r, 1000));
-    }
-  }
+  console.log(`[IncogPay] Loading provider for ${networkName} via ${proxyUrl}`);
+
+  await loadProvider(
+    {
+      chainId: chain.id,
+      providers: [
+        { provider: proxyUrl, priority: 1, weight: 2 },
+        { provider: proxyUrl, priority: 2, weight: 1 },
+      ],
+    },
+    networkName,
+  );
+
+  loadedProviders.add(networkName);
+  console.log(`[IncogPay] Provider loaded for ${networkName}`);
 }
 
 async function doInit(): Promise<void> {
