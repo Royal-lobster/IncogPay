@@ -330,7 +330,11 @@ function SendPageInner() {
   // ── check for existing spendable balances (after signing to resume or fresh connect)
   const checkExistingBalances = async () => {
     const wallet = getCachedWallet();
-    if (!wallet) return;
+    if (!wallet) {
+      console.warn("[IncogPay] checkExistingBalances: no cached wallet");
+      setExistingBalances([]);
+      return;
+    }
 
     setCheckingBalances(true);
     try {
@@ -347,8 +351,9 @@ function SendPageInner() {
           symbol: tokens.find((t) => t.address === b.tokenAddress)?.symbol ?? "???",
         })),
       );
-    } catch {
-      // Balance check failed — not critical, just skip
+    } catch (err) {
+      console.error("[IncogPay] checkExistingBalances failed:", err);
+      setExistingBalances([]);
     } finally {
       setCheckingBalances(false);
     }
