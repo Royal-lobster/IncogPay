@@ -55,6 +55,22 @@ function createArtifactStore(): ArtifactStore {
   return new ArtifactStore(get, store, exists);
 }
 
+// ── load snarkjs UMD from /public (avoids Turbopack crash) ─────────────────
+let snarkJSPromise: Promise<void> | null = null;
+function loadSnarkJS(): Promise<void> {
+  if (snarkJSPromise) return snarkJSPromise;
+  snarkJSPromise = new Promise<void>((resolve, reject) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if ((globalThis as any).snarkjs) { resolve(); return; }
+    const script = document.createElement("script");
+    script.src = "/snarkjs.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Failed to load /snarkjs.min.js"));
+    document.head.appendChild(script);
+  });
+  return snarkJSPromise;
+}
+
 // ── POI node URLs (public RAILGUN aggregators) ────────────────────────────
 const POI_NODES = ["https://ppoi-agg.horsewithsixlegs.xyz"];
 
@@ -135,9 +151,12 @@ async function doInit(): Promise<void> {
   );
 
   // Register the snarkjs groth16 prover for ZK proof generation.
-  // Dynamic import avoids Turbopack static analysis crashing on snarkjs's
-  // Node.js file references (NftJsonAsset filepath error).
+  // snarkjs is loaded as a UMD script from /public (Turbopack crashes on
+  // the npm package's internal file references).  The script is loaded
+  // lazily so engine init doesn't block page load.
+  await loadSnarkJS();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const snarkjs: any = await import(/* webpackIgnore: true */ "snarkjs");
-  getProver().setSnarkJSGroth16(snarkjs.groth16);
+  const groth16 = (globalThis as any).snarkjs?.groth16;
+  if (!groth16) throw new Error("snarkjs failed to load — groth16 not found on globalThis");
+  getProver().setSnarkJSGroth16(groth16);
 }
