@@ -141,6 +141,10 @@ function friendlyError(err: unknown): string {
   const msg = err instanceof Error ? err.message : String(err);
   const lower = msg.toLowerCase();
 
+  console.error("[IncogPay] Raw error:", msg);
+
+  if (lower.includes("no broadcaster available"))
+    return "No relayer available for this token right now. Try again in a moment or switch networks.";
   if (lower.includes("transfer amount exceeds balance"))
     return "Insufficient token balance. Check you have enough funds in your wallet.";
   if (lower.includes("transfer amount exceeds allowance"))
@@ -151,7 +155,7 @@ function friendlyError(err: unknown): string {
     return "Transaction rejected in wallet.";
   if (lower.includes("nonce"))
     return "Transaction conflict. Try again in a moment.";
-  if (lower.includes("network") || lower.includes("rpc") || lower.includes("timeout") || lower.includes("failed to fetch"))
+  if (lower.includes("rpc") || lower.includes("timeout") || lower.includes("failed to fetch"))
     return "Network error. Check your connection and try again.";
   if (lower.includes("execution reverted"))
     return "Transaction would fail on-chain. Double-check your balance and try again.";
