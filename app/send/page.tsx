@@ -341,14 +341,12 @@ function SendPageInner() {
         tokens.map((t) => t.address),
       );
 
-      if (balances.length > 0) {
-        setExistingBalances(
-          balances.map((b) => ({
-            ...b,
-            symbol: tokens.find((t) => t.address === b.tokenAddress)?.symbol ?? "???",
-          })),
-        );
-      }
+      setExistingBalances(
+        balances.map((b) => ({
+          ...b,
+          symbol: tokens.find((t) => t.address === b.tokenAddress)?.symbol ?? "???",
+        })),
+      );
     } catch {
       // Balance check failed — not critical, just skip
     } finally {
@@ -665,7 +663,13 @@ function SendPageInner() {
                       <p className="text-xs text-zinc-500">Checking for existing private funds…</p>
                     </div>
                   )}
-                  {!existingBalances && !checkingBalances && (
+                  {existingBalances !== null && existingBalances.length === 0 && (
+                    <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3 py-2.5">
+                      <ShieldCheck size={12} weight="duotone" className="text-zinc-600 shrink-0" />
+                      <p className="text-xs text-zinc-500">No private funds found. Proceed with a new deposit below.</p>
+                    </div>
+                  )}
+                  {existingBalances === null && !checkingBalances && (
                     <button
                       onClick={async () => {
                         try {
