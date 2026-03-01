@@ -45,7 +45,7 @@ export async function privateSend(
 
   let selfRelay = !broadcaster;
 
-  // ── Step 2: Build + estimate (may fall back to self-relay) ─────────────
+  // ── Step 2: Estimate gas (may fall back to self-relay) ─────────────────
   const erc20AmountRecipients: RailgunERC20AmountRecipient[] = [
     { tokenAddress, amount, recipientAddress },
   ];
@@ -65,12 +65,13 @@ export async function privateSend(
           gasPrice: BigInt(0),
         };
 
-  // If broadcaster found, try estimating with broadcaster fees first.
-  // If balance is too low to cover the fee, fall back to self-relay.
+  let gasEstimate;
+
   if (broadcaster && !selfRelay) {
+    // Try with broadcaster fees first
     onProgress?.("Estimating gas...");
     try {
-      await gasEstimateForUnprovenUnshield(
+      gasEstimate = await gasEstimateForUnprovenUnshield(
         TXID_VERSION,
         networkName,
         walletId,
@@ -81,26 +82,34 @@ export async function privateSend(
         { tokenAddress: broadcaster.tokenAddress, feePerUnitGas: broadcaster.feePerUnitGas },
         false,
       );
+      console.log("[IncogPay] Gas estimate with broadcaster succeeded");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (msg.toLowerCase().includes("balance too low") || msg.toLowerCase().includes("broadcaster fee")) {
-        console.warn("[IncogPay] Broadcaster fee too high for balance, switching to self-relay");
-        onProgress?.("Fee too high for relayer — using self-relay...");
-        selfRelay = true;
-        broadcaster = null;
-      } else {
-        throw err;
-      }
+      console.warn("[IncogPay] Broadcaster gas estimate failed:", msg);
+      // Any error during broadcaster estimation → fall back to self-relay
+      console.log("[IncogPay] Falling back to self-relay");
+      onProgress?.("Relayer unavailable — switching to self-relay...");
+      selfRelay = true;
+      broadcaster = null;
     }
   }
 
+  // Self-relay path (no broadcaster fee, user pays gas in native token)
   if (selfRelay) {
     onProgress?.("Self-relay mode (you pay gas in ETH)...");
+    gasEstimate = await gasEstimateForUnprovenUnshield(
+      TXID_VERSION,
+      networkName,
+      walletId,
+      encryptionKey,
+      erc20AmountRecipients,
+      [],
+      dummyGasDetails,
+      undefined,
+      true,
+    );
+    console.log("[IncogPay] Gas estimate with self-relay succeeded");
   }
-
-  const feeTokenDetails: FeeTokenDetails | undefined = broadcaster
-    ? { tokenAddress: broadcaster.tokenAddress, feePerUnitGas: broadcaster.feePerUnitGas }
-    : undefined;
 
   const broadcasterFeeRecipient: RailgunERC20AmountRecipient | undefined = broadcaster
     ? {
@@ -110,20 +119,7 @@ export async function privateSend(
       }
     : undefined;
 
-  onProgress?.("Estimating gas...");
-
-  const gasEstimate = await gasEstimateForUnprovenUnshield(
-    TXID_VERSION,
-    networkName,
-    walletId,
-    encryptionKey,
-    erc20AmountRecipients,
-    [],
-    dummyGasDetails,
-    feeTokenDetails,
-    selfRelay,
-  );
-
+  if (!gasEstimate) throw new Error("Gas estimation failed");
   const overallBatchMinGasPrice = gasEstimate.gasEstimate ?? BigInt(0);
 
   // ── Step 3: Generate ZK proof ──────────────────────────────────────────
