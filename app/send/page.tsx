@@ -145,6 +145,8 @@ function friendlyError(err: unknown): string {
 
   if (lower.includes("no broadcaster available"))
     return "No relayer available for this token right now. Try again in a moment or switch networks.";
+  if (lower.includes("private balance not found after scanning") || lower.includes("merkle tree may still be syncing"))
+    return "Wallet is still syncing your private balance. Please wait a minute and try again.";
   if (lower.includes("balance too low") || lower.includes("broadcaster fee"))
     return "Balance too low to cover relayer fee. Ensure you have some ETH for gas and try again.";
   if (lower.includes("block number") || lower.includes("polling provider"))

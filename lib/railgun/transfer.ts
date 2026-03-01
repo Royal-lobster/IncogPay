@@ -1,5 +1,4 @@
 import type {
-  FeeTokenDetails,
   RailgunERC20AmountRecipient,
   TransactionGasDetails,
 } from "@railgun-community/shared-models";
@@ -38,25 +37,52 @@ export async function privateSend(
   await ensureProvider(networkName);
   const { chain } = NETWORK_CONFIG[networkName];
 
-  // ── Refresh merkle tree so wallet has current balances ──────────────────
-  onProgress?.("Syncing balances...");
-  console.log("[IncogPay] Refreshing balances for wallet", walletId);
-  await refreshBalances(chain, [walletId]).catch((err) => {
-    console.warn("[IncogPay] refreshBalances warning:", err);
-  });
+  // ── Wait for merkle tree scan to find the balance ──────────────────────
+  // After a fresh page load, loadWalletByID triggers a background merkle
+  // tree scan.  A single refreshBalances call may return before the scan
+  // reaches the block that contains the shield.  We poll until the SDK
+  // reports a non-zero balance (or time out after ~90 s).
+  const MAX_BALANCE_POLLS = 12;
+  const BALANCE_POLL_INTERVAL_MS = 8_000;
 
-  // ── Diagnostic: check what the SDK thinks the balance is ───────────────
-  try {
-    const wallet = walletForID(walletId);
-    const spendable = await balanceForERC20Token(
-      TXID_VERSION, wallet, networkName, tokenAddress, true,
+  let foundBalance = BigInt(0);
+  for (let attempt = 1; attempt <= MAX_BALANCE_POLLS; attempt++) {
+    onProgress?.(`Syncing balances${attempt > 1 ? ` (${attempt}/${MAX_BALANCE_POLLS})` : ""}...`);
+    console.log(`[IncogPay] refreshBalances attempt ${attempt}/${MAX_BALANCE_POLLS}`);
+
+    await refreshBalances(chain, [walletId]).catch((err) => {
+      console.warn("[IncogPay] refreshBalances warning:", err);
+    });
+
+    try {
+      const wallet = walletForID(walletId);
+      const spendable = await balanceForERC20Token(
+        TXID_VERSION, wallet, networkName, tokenAddress, true,
+      );
+      const total = await balanceForERC20Token(
+        TXID_VERSION, wallet, networkName, tokenAddress, false,
+      );
+      console.log(`[IncogPay] Balance poll ${attempt} — spendable: ${spendable.toString()}, total: ${total.toString()}, token: ${tokenAddress}, needed: ${amount.toString()}`);
+      foundBalance = spendable;
+    } catch (err) {
+      console.warn("[IncogPay] Balance check failed:", err);
+    }
+
+    if (foundBalance >= amount) break;
+
+    // If total is non-zero but spendable is 0, PPOI hasn't verified yet
+    // If both are 0, merkle tree scan hasn't reached the shield tx yet
+    if (attempt < MAX_BALANCE_POLLS) {
+      onProgress?.(`Waiting for balance to sync (${attempt}/${MAX_BALANCE_POLLS})...`);
+      await new Promise((r) => setTimeout(r, BALANCE_POLL_INTERVAL_MS));
+    }
+  }
+
+  if (foundBalance < amount) {
+    throw new Error(
+      `Private balance not found after scanning. Spendable: ${foundBalance.toString()}, needed: ${amount.toString()}. ` +
+      `The merkle tree may still be syncing — please wait a minute and try again.`,
     );
-    const total = await balanceForERC20Token(
-      TXID_VERSION, wallet, networkName, tokenAddress, false,
-    );
-    console.log(`[IncogPay] Balance check — spendable: ${spendable.toString()}, total: ${total.toString()}, token: ${tokenAddress}, amount needed: ${amount.toString()}`);
-  } catch (err) {
-    console.warn("[IncogPay] Diagnostic balance check failed:", err);
   }
 
   // ── Step 1: Try to find a broadcaster ──────────────────────────────────
