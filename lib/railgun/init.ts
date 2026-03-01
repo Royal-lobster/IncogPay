@@ -1,5 +1,5 @@
 import { NETWORK_CONFIG, NetworkName } from "@railgun-community/shared-models";
-import { ArtifactStore, loadProvider, startRailgunEngine } from "@railgun-community/wallet";
+import { ArtifactStore, getProver, loadProvider, startRailgunEngine } from "@railgun-community/wallet";
 
 // level-js has no TypeScript declarations — import as untyped and cast.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -133,4 +133,11 @@ async function doInit(): Promise<void> {
     false, // skipMerkletreeScans
     POI_NODES, // PPOI aggregator nodes
   );
+
+  // Register the snarkjs groth16 prover for ZK proof generation.
+  // Dynamic import avoids Turbopack static analysis crashing on snarkjs's
+  // Node.js file references (NftJsonAsset filepath error).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const snarkjs: any = await import(/* webpackIgnore: true */ "snarkjs");
+  getProver().setSnarkJSGroth16(snarkjs.groth16);
 }
