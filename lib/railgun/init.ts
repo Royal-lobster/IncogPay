@@ -15,8 +15,19 @@ const loadedProviders = new Set<NetworkName>();
 function createArtifactStore(): ArtifactStore {
   const db = new LevelDB("incogpay-artifacts");
 
+  // level-js requires an explicit open() before put/get — without it, the
+  // internal IndexedDB handle (this.idb) is undefined and operations throw
+  // "Cannot read properties of undefined (reading 'transaction')".
+  const dbReady = new Promise<void>((resolve, reject) => {
+    db.open((err: Error | undefined) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+
   const get = async (path: string): Promise<string | Buffer | null> => {
     try {
+      await dbReady;
       const data = await new Promise<Buffer>((resolve, reject) => {
         db.get(path, { asBuffer: true }, (err: Error | undefined, value: Buffer) => {
           if (err) reject(err);
@@ -30,6 +41,7 @@ function createArtifactStore(): ArtifactStore {
   };
 
   const store = async (_dir: string, path: string, item: string | Uint8Array): Promise<void> => {
+    await dbReady;
     await new Promise<void>((resolve, reject) => {
       db.put(path, item, (err: Error | undefined) => {
         if (err) reject(err);
@@ -40,6 +52,7 @@ function createArtifactStore(): ArtifactStore {
 
   const exists = async (path: string): Promise<boolean> => {
     try {
+      await dbReady;
       await new Promise<Buffer>((resolve, reject) => {
         db.get(path, { asBuffer: true }, (err: Error | undefined, value: Buffer) => {
           if (err) reject(err);
