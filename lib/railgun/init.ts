@@ -58,34 +58,28 @@ function createArtifactStore(): ArtifactStore {
 // ── POI node URLs (public RAILGUN aggregators) ────────────────────────────
 const POI_NODES = ["https://ppoi-agg.horsewithsixlegs.xyz"];
 
-// ── RPC endpoints per network (CORS-friendly, browser-compatible) ────────
-// Multiple fallbacks per chain — the RAILGUN SDK tries them in priority order.
-const NETWORK_RPCS: Record<NetworkName, string[]> = {
-  [NetworkName.Arbitrum]: [
-    "https://arb1.arbitrum.io/rpc",
-    "https://arbitrum.llamarpc.com",
-    "https://1rpc.io/arb",
-    "https://rpc.ankr.com/arbitrum",
-  ],
-  [NetworkName.Ethereum]: [
-    "https://eth.llamarpc.com",
-    "https://1rpc.io/eth",
-    "https://rpc.ankr.com/eth",
-    "https://ethereum-rpc.publicnode.com",
-  ],
-  [NetworkName.Polygon]: [
-    "https://polygon.llamarpc.com",
-    "https://polygon-rpc.com",
-    "https://1rpc.io/matic",
-    "https://rpc.ankr.com/polygon",
-  ],
-  [NetworkName.BNBChain]: [
-    "https://bsc-dataseed.binance.org",
-    "https://bsc-dataseed1.defibit.io",
-    "https://1rpc.io/bnb",
-    "https://rpc.ankr.com/bsc",
-  ],
-} as Record<NetworkName, string[]>;
+// ── RPC endpoints per network ────────────────────────────────────────────
+// Primary: our own API proxy (same-origin, no CORS issues).
+// Fallback: direct public RPCs (may be CORS-blocked from some origins).
+function getBaseUrl(): string {
+  if (typeof window !== "undefined") return window.location.origin;
+  return process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+}
+
+const PROXY_NETWORKS: Record<NetworkName, string> = {
+  [NetworkName.Arbitrum]: "arbitrum",
+  [NetworkName.Ethereum]: "ethereum",
+  [NetworkName.Polygon]: "polygon",
+  [NetworkName.BNBChain]: "bnb",
+} as Record<NetworkName, string>;
+
+function getRPCs(networkName: NetworkName): string[] {
+  const proxyKey = PROXY_NETWORKS[networkName];
+  const base = getBaseUrl();
+  return proxyKey
+    ? [`${base}/api/rpc/${proxyKey}`]
+    : [];
+}
 
 // ── public API ────────────────────────────────────────────────────────────
 
@@ -110,7 +104,7 @@ export async function ensureProvider(networkName: NetworkName): Promise<void> {
 
   if (loadedProviders.has(networkName)) return;
 
-  const rpcs = NETWORK_RPCS[networkName];
+  const rpcs = getRPCs(networkName);
   if (!rpcs || rpcs.length === 0) throw new Error(`No RPC configured for ${networkName}`);
 
   const { chain } = NETWORK_CONFIG[networkName];
