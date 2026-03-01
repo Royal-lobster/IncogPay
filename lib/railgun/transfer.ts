@@ -11,7 +11,8 @@ import {
   refreshBalances,
   walletForID,
 } from "@railgun-community/wallet";
-import { findBestBroadcaster, sendViaBroadcaster } from "./broadcaster";
+// Broadcaster imports — retained for when PPOI proof issue is resolved
+// import { findBestBroadcaster, sendViaBroadcaster } from "./broadcaster";
 import { ensureProvider } from "./init";
 import { getNetworkName, TXID_VERSION } from "./networks";
 import type { SendResult } from "./types";
@@ -19,10 +20,9 @@ import type { SendResult } from "./types";
 /**
  * Execute a private unshield (send shielded tokens to a public address).
  *
- * Tries the broadcaster (relayer) network first for maximum privacy.
- * If no broadcaster is found after retries, falls back to self-relay
- * where the user's own wallet submits the transaction (requires native
- * gas token, slightly less private but funds aren't stuck).
+ * Currently uses self-relay only (user pays gas in native token).
+ * Broadcaster support is temporarily disabled due to a PPOI proof
+ * generation error in the SDK.
  */
 export async function privateSend(
   chainId: number,
@@ -85,17 +85,12 @@ export async function privateSend(
     );
   }
 
-  // ── Step 1: Try to find a broadcaster ──────────────────────────────────
-  onProgress?.("Finding relayer...");
-  let broadcaster = await findBestBroadcaster(
-    networkName,
-    tokenAddress,
-    (msg) => onProgress?.(msg),
-  );
+  // ── Step 1: Self-relay mode ────────────────────────────────────────────
+  // Using self-relay (user pays gas in native token) to avoid PPOI proof
+  // generation issues with the broadcaster path.  Broadcaster support can
+  // be re-enabled once the PPOI proof error is resolved.
+  const selfRelay = true;
 
-  let selfRelay = !broadcaster;
-
-  // ── Step 2: Estimate gas (may fall back to self-relay) ─────────────────
   const erc20AmountRecipients: RailgunERC20AmountRecipient[] = [
     { tokenAddress, amount, recipientAddress },
   ];
@@ -115,61 +110,23 @@ export async function privateSend(
           gasPrice: BigInt(0),
         };
 
-  let gasEstimate;
+  // ── Step 2: Estimate gas ─────────────────────────────────────────────
+  onProgress?.("Estimating gas (self-relay)...");
+  const gasEstimate = await gasEstimateForUnprovenUnshield(
+    TXID_VERSION,
+    networkName,
+    walletId,
+    encryptionKey,
+    erc20AmountRecipients,
+    [],
+    dummyGasDetails,
+    undefined,
+    true,
+  );
+  console.log("[IncogPay] Gas estimate with self-relay succeeded");
 
-  if (broadcaster && !selfRelay) {
-    // Try with broadcaster fees first
-    onProgress?.("Estimating gas...");
-    try {
-      gasEstimate = await gasEstimateForUnprovenUnshield(
-        TXID_VERSION,
-        networkName,
-        walletId,
-        encryptionKey,
-        erc20AmountRecipients,
-        [],
-        dummyGasDetails,
-        { tokenAddress: broadcaster.tokenAddress, feePerUnitGas: broadcaster.feePerUnitGas },
-        false,
-      );
-      console.log("[IncogPay] Gas estimate with broadcaster succeeded");
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.warn("[IncogPay] Broadcaster gas estimate failed:", msg);
-      // Any error during broadcaster estimation → fall back to self-relay
-      console.log("[IncogPay] Falling back to self-relay");
-      onProgress?.("Relayer unavailable — switching to self-relay...");
-      selfRelay = true;
-      broadcaster = null;
-    }
-  }
+  const broadcasterFeeRecipient: RailgunERC20AmountRecipient | undefined = undefined;
 
-  // Self-relay path (no broadcaster fee, user pays gas in native token)
-  if (selfRelay) {
-    onProgress?.("Self-relay mode (you pay gas in ETH)...");
-    gasEstimate = await gasEstimateForUnprovenUnshield(
-      TXID_VERSION,
-      networkName,
-      walletId,
-      encryptionKey,
-      erc20AmountRecipients,
-      [],
-      dummyGasDetails,
-      undefined,
-      true,
-    );
-    console.log("[IncogPay] Gas estimate with self-relay succeeded");
-  }
-
-  const broadcasterFeeRecipient: RailgunERC20AmountRecipient | undefined = broadcaster
-    ? {
-        tokenAddress: broadcaster.tokenAddress,
-        amount: BigInt(0),
-        recipientAddress: broadcaster.railgunAddress,
-      }
-    : undefined;
-
-  if (!gasEstimate) throw new Error("Gas estimation failed");
   const overallBatchMinGasPrice = gasEstimate.gasEstimate ?? BigInt(0);
 
   // ── Step 3: Generate ZK proof ──────────────────────────────────────────
@@ -240,36 +197,14 @@ export async function privateSend(
     );
   }
 
-  // ── Step 5: Send transaction ───────────────────────────────────────────
-  if (selfRelay) {
-    onProgress?.("Sign in wallet...");
-    return {
-      txHash: "",
-      selfRelayTx: {
-        to: populateResult.transaction.to!,
-        data: populateResult.transaction.data! as `0x${string}`,
-        gasLimit: gasEstimate.gasEstimate,
-      },
-    };
-  }
-
-  onProgress?.("Broadcasting...");
-
-  const nullifiers = populateResult.nullifiers ?? [];
-  const txHash = await sendViaBroadcaster(
-    TXID_VERSION,
-    {
+  // ── Step 5: Return self-relay transaction for wallet signing ───────────
+  onProgress?.("Sign in wallet...");
+  return {
+    txHash: "",
+    selfRelayTx: {
       to: populateResult.transaction.to!,
-      data: populateResult.transaction.data!,
+      data: populateResult.transaction.data! as `0x${string}`,
+      gasLimit: gasEstimate.gasEstimate,
     },
-    broadcaster!.railgunAddress,
-    broadcaster!.feesID,
-    chain,
-    nullifiers,
-    overallBatchMinGasPrice,
-    true,
-    populateResult.preTransactionPOIsPerTxidLeafPerList,
-  );
-
-  return { txHash };
+  };
 }
