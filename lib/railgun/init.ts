@@ -111,30 +111,30 @@ export async function ensureProvider(networkName: NetworkName): Promise<void> {
   if (loadedProviders.has(networkName)) return;
 
   const rpcs = NETWORK_RPCS[networkName];
-  if (!rpcs) throw new Error(`No RPC configured for ${networkName}`);
+  if (!rpcs || rpcs.length === 0) throw new Error(`No RPC configured for ${networkName}`);
 
   const { chain } = NETWORK_CONFIG[networkName];
 
-  const MAX_RETRIES = 3;
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+  // Try each RPC individually — avoids FallbackProvider quorum issues
+  // where slight sync differences between RPCs cause failures.
+  for (let i = 0; i < rpcs.length; i++) {
     try {
+      console.log(`[IncogPay] Trying RPC ${i + 1}/${rpcs.length} for ${networkName}: ${rpcs[i]}`);
       await loadProvider(
         {
           chainId: chain.id,
-          providers: rpcs.map((rpc, i) => ({
-            provider: rpc,
-            priority: i + 1,
-            weight: 1,
-          })),
+          providers: [{ provider: rpcs[i], priority: 1, weight: 1 }],
         },
         networkName,
       );
       loadedProviders.add(networkName);
+      console.log(`[IncogPay] Provider loaded for ${networkName} using ${rpcs[i]}`);
       return;
     } catch (err) {
-      console.warn(`[IncogPay] loadProvider attempt ${attempt}/${MAX_RETRIES} failed for ${networkName}:`, err);
-      if (attempt === MAX_RETRIES) throw err;
-      await new Promise((r) => setTimeout(r, 2000));
+      console.warn(`[IncogPay] RPC ${rpcs[i]} failed for ${networkName}:`, err);
+      if (i === rpcs.length - 1) throw err;
+      // Small delay before trying next RPC
+      await new Promise((r) => setTimeout(r, 1000));
     }
   }
 }
