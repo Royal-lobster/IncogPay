@@ -8,6 +8,7 @@ import {
   gasEstimateForUnprovenUnshield,
   generateUnshieldProof,
   populateProvedUnshield,
+  refreshBalances,
 } from "@railgun-community/wallet";
 import { findBestBroadcaster, sendViaBroadcaster } from "./broadcaster";
 import { ensureProvider } from "./init";
@@ -34,6 +35,13 @@ export async function privateSend(
   const networkName = getNetworkName(chainId);
   await ensureProvider(networkName);
   const { chain } = NETWORK_CONFIG[networkName];
+
+  // ── Refresh merkle tree so wallet has current balances ──────────────────
+  onProgress?.("Syncing balances...");
+  console.log("[IncogPay] Refreshing balances for wallet", walletId);
+  await refreshBalances(chain, [walletId]).catch((err) => {
+    console.warn("[IncogPay] refreshBalances warning:", err);
+  });
 
   // ── Step 1: Try to find a broadcaster ──────────────────────────────────
   onProgress?.("Finding relayer...");
