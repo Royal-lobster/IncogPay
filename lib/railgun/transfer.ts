@@ -179,6 +179,7 @@ export async function privateSend(
     onProgress?.("Generating proof...", Math.round(progress * 100));
   };
 
+  console.log("[IncogPay] Starting proof generation...");
   await generateUnshieldProof(
     TXID_VERSION,
     networkName,
@@ -191,6 +192,7 @@ export async function privateSend(
     overallBatchMinGasPrice,
     progressCallback,
   );
+  console.log("[IncogPay] Proof generation complete");
 
   // ── Step 4: Populate proved transaction ────────────────────────────────
   onProgress?.("Preparing transaction...");
@@ -220,6 +222,14 @@ export async function privateSend(
     overallBatchMinGasPrice,
     finalGasDetails,
   );
+  console.log("[IncogPay] populateProvedUnshield result:", JSON.stringify(populateResult, (_, v) => typeof v === "bigint" ? v.toString() : v));
+
+  if (!populateResult?.transaction) {
+    throw new Error(
+      `populateProvedUnshield returned no transaction. ` +
+      `Result keys: ${populateResult ? Object.keys(populateResult).join(", ") : "undefined"}`,
+    );
+  }
 
   // ── Step 5: Send transaction ───────────────────────────────────────────
   if (selfRelay) {
