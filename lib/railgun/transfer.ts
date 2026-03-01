@@ -15,23 +15,12 @@ import { getNetworkName, TXID_VERSION } from "./networks";
 import type { SendResult } from "./types";
 
 /**
- * Execute a private unshield (send shielded tokens to a public address)
- * via the broadcaster network.
+ * Execute a private unshield (send shielded tokens to a public address).
  *
- * Flow:
- *   1. Find the best available broadcaster
- *   2. Estimate gas for the unshield
- *   3. Generate a zero-knowledge proof
- *   4. Populate the proved transaction
- *   5. Relay the transaction via the Waku broadcaster network
- *
- * @param chainId          - EVM chain id
- * @param walletId         - RAILGUN wallet id
- * @param encryptionKey    - Wallet encryption key (keccak256 of signature)
- * @param tokenAddress     - ERC-20 token contract address
- * @param amount           - Amount in base units (bigint)
- * @param recipientAddress - Public destination address (0x...)
- * @param onProgress       - Optional callback for progress updates
+ * Tries the broadcaster (relayer) network first for maximum privacy.
+ * If no broadcaster is found after retries, falls back to self-relay
+ * where the user's own wallet submits the transaction (requires native
+ * gas token, slightly less private but funds aren't stuck).
  */
 export async function privateSend(
   chainId: number,
@@ -46,20 +35,30 @@ export async function privateSend(
   await ensureProvider(networkName);
   const { chain } = NETWORK_CONFIG[networkName];
 
-  // ── Step 1: Find best broadcaster ──────────────────────────────────────
-  onProgress?.("Finding best relayer...");
-  const broadcaster = await findBestBroadcaster(networkName, tokenAddress);
+  // ── Step 1: Try to find a broadcaster ──────────────────────────────────
+  onProgress?.("Finding relayer...");
+  const broadcaster = await findBestBroadcaster(
+    networkName,
+    tokenAddress,
+    (msg) => onProgress?.(msg),
+  );
 
-  const feeTokenDetails: FeeTokenDetails = {
-    tokenAddress: broadcaster.tokenAddress,
-    feePerUnitGas: broadcaster.feePerUnitGas,
-  };
+  const selfRelay = !broadcaster;
+  if (selfRelay) {
+    onProgress?.("No relayer found — using self-relay...");
+  }
 
-  const broadcasterFeeRecipient: RailgunERC20AmountRecipient = {
-    tokenAddress: broadcaster.tokenAddress,
-    amount: BigInt(0), // Placeholder — actual fee calculated by the SDK
-    recipientAddress: broadcaster.railgunAddress,
-  };
+  const feeTokenDetails: FeeTokenDetails | undefined = broadcaster
+    ? { tokenAddress: broadcaster.tokenAddress, feePerUnitGas: broadcaster.feePerUnitGas }
+    : undefined;
+
+  const broadcasterFeeRecipient: RailgunERC20AmountRecipient | undefined = broadcaster
+    ? {
+        tokenAddress: broadcaster.tokenAddress,
+        amount: BigInt(0),
+        recipientAddress: broadcaster.railgunAddress,
+      }
+    : undefined;
 
   const erc20AmountRecipients: RailgunERC20AmountRecipient[] = [
     { tokenAddress, amount, recipientAddress },
@@ -68,7 +67,6 @@ export async function privateSend(
   // ── Step 2: Estimate gas ───────────────────────────────────────────────
   onProgress?.("Estimating gas...");
 
-  // The SDK requires originalGasDetails matching the network's expected gas type.
   const { defaultEVMGasType } = NETWORK_CONFIG[networkName];
   const dummyGasDetails: TransactionGasDetails =
     defaultEVMGasType === EVMGasType.Type2
@@ -93,7 +91,7 @@ export async function privateSend(
     [], // nftAmountRecipients
     dummyGasDetails,
     feeTokenDetails,
-    false, // sendWithPublicWallet
+    selfRelay, // sendWithPublicWallet
   );
 
   const overallBatchMinGasPrice = gasEstimate.gasEstimate ?? BigInt(0);
@@ -113,7 +111,7 @@ export async function privateSend(
     erc20AmountRecipients,
     [], // nftAmountRecipients
     broadcasterFeeRecipient,
-    false, // sendWithPublicWallet
+    selfRelay, // sendWithPublicWallet
     overallBatchMinGasPrice,
     progressCallback,
   );
@@ -142,12 +140,25 @@ export async function privateSend(
     erc20AmountRecipients,
     [], // nftAmountRecipients
     broadcasterFeeRecipient,
-    false, // sendWithPublicWallet
+    selfRelay, // sendWithPublicWallet
     overallBatchMinGasPrice,
     finalGasDetails,
   );
 
-  // ── Step 5: Send via broadcaster ───────────────────────────────────────
+  // ── Step 5: Send transaction ───────────────────────────────────────────
+  if (selfRelay) {
+    // Return the raw transaction for the caller to submit via user's wallet
+    onProgress?.("Sign in wallet...");
+    return {
+      txHash: "",
+      selfRelayTx: {
+        to: populateResult.transaction.to!,
+        data: populateResult.transaction.data! as `0x${string}`,
+        gasLimit: gasEstimate.gasEstimate,
+      },
+    };
+  }
+
   onProgress?.("Broadcasting...");
 
   const nullifiers = populateResult.nullifiers ?? [];

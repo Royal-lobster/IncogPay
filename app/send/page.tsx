@@ -482,11 +482,24 @@ function SendPageInner() {
           if (phase.includes("proof")) {
             setSendSubLabel("proving");
             setProofProgress(pct ?? 0);
-          } else if (phase.includes("Broadcasting")) {
+          } else if (phase.includes("Broadcasting") || phase.includes("relayer")) {
+            setSendSubLabel("broadcasting");
+          } else if (phase.includes("Sign in wallet")) {
             setSendSubLabel("broadcasting");
           }
         },
       );
+
+      // Self-relay: no broadcaster found, user's wallet submits the tx directly
+      if (result.selfRelayTx) {
+        setSendSubLabel("broadcasting");
+        const hash = await sendTransactionAsync({
+          to: result.selfRelayTx.to as `0x${string}`,
+          data: result.selfRelayTx.data,
+          gas: result.selfRelayTx.gasLimit,
+        });
+        return { txHash: hash };
+      }
 
       return result;
     },

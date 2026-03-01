@@ -52,33 +52,44 @@ export async function initBroadcasters(networkName: NetworkName): Promise<void> 
 
 /**
  * Find the best available broadcaster for the given token on a network.
+ * Retries several times because Waku P2P peer discovery takes time after start.
  */
 export async function findBestBroadcaster(
   networkName: NetworkName,
   tokenAddress: string,
-): Promise<BroadcasterInfo> {
+  onProgress?: (msg: string) => void,
+): Promise<BroadcasterInfo | null> {
   await initBroadcasters(networkName);
   const waku = await getWaku();
   const { chain } = NETWORK_CONFIG[networkName];
 
-  // findBestBroadcaster is synchronous — returns Optional<SelectedBroadcaster>
-  const selected: SelectedBroadcaster | undefined = waku.WakuBroadcasterClient.findBestBroadcaster(
-    chain,
-    tokenAddress,
-    true,
-  );
+  const MAX_RETRIES = 6;
+  const RETRY_DELAY_MS = 5000;
 
-  if (!selected) {
-    throw new Error("No broadcaster available for this token and network");
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const selected: SelectedBroadcaster | undefined = waku.WakuBroadcasterClient.findBestBroadcaster(
+      chain,
+      tokenAddress,
+      true,
+    );
+
+    if (selected) {
+      return {
+        railgunAddress: selected.railgunAddress,
+        tokenAddress: selected.tokenAddress,
+        feePerUnitGas: BigInt(selected.tokenFee.feePerUnitGas),
+        feesID: selected.tokenFee.feesID,
+      };
+    }
+
+    if (attempt < MAX_RETRIES) {
+      onProgress?.(`Searching for relayer (${attempt}/${MAX_RETRIES})...`);
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS));
+    }
   }
 
-  return {
-    railgunAddress: selected.railgunAddress,
-    tokenAddress: selected.tokenAddress,
-    // CachedTokenFee.feePerUnitGas is a string in the SDK
-    feePerUnitGas: BigInt(selected.tokenFee.feePerUnitGas),
-    feesID: selected.tokenFee.feesID,
-  };
+  // No broadcaster found after all retries
+  return null;
 }
 
 /**

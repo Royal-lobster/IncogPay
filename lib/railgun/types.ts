@@ -10,6 +10,12 @@ export interface ShieldResult {
 
 export interface SendResult {
   txHash: string;
+  /** Present when no broadcaster was found — caller must submit this tx via user's wallet. */
+  selfRelayTx?: {
+    to: string;
+    data: `0x${string}`;
+    gasLimit: bigint;
+  };
 }
 
 export interface BroadcasterInfo {
