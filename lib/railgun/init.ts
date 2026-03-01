@@ -59,22 +59,31 @@ function createArtifactStore(): ArtifactStore {
 const POI_NODES = ["https://ppoi-agg.horsewithsixlegs.xyz"];
 
 // ── RPC endpoints per network (CORS-friendly, browser-compatible) ────────
+// Multiple fallbacks per chain — the RAILGUN SDK tries them in priority order.
 const NETWORK_RPCS: Record<NetworkName, string[]> = {
   [NetworkName.Arbitrum]: [
-    "https://1rpc.io/arb",
     "https://arb1.arbitrum.io/rpc",
+    "https://arbitrum.llamarpc.com",
+    "https://1rpc.io/arb",
+    "https://rpc.ankr.com/arbitrum",
   ],
   [NetworkName.Ethereum]: [
-    "https://1rpc.io/eth",
     "https://eth.llamarpc.com",
+    "https://1rpc.io/eth",
+    "https://rpc.ankr.com/eth",
+    "https://ethereum-rpc.publicnode.com",
   ],
   [NetworkName.Polygon]: [
-    "https://1rpc.io/matic",
+    "https://polygon.llamarpc.com",
     "https://polygon-rpc.com",
+    "https://1rpc.io/matic",
+    "https://rpc.ankr.com/polygon",
   ],
   [NetworkName.BNBChain]: [
-    "https://1rpc.io/bnb",
     "https://bsc-dataseed.binance.org",
+    "https://bsc-dataseed1.defibit.io",
+    "https://1rpc.io/bnb",
+    "https://rpc.ankr.com/bsc",
   ],
 } as Record<NetworkName, string[]>;
 
@@ -106,19 +115,28 @@ export async function ensureProvider(networkName: NetworkName): Promise<void> {
 
   const { chain } = NETWORK_CONFIG[networkName];
 
-  await loadProvider(
-    {
-      chainId: chain.id,
-      providers: rpcs.map((rpc, i) => ({
-        provider: rpc,
-        priority: i + 1,
-        weight: 2,
-      })),
-    },
-    networkName,
-  );
-
-  loadedProviders.add(networkName);
+  const MAX_RETRIES = 3;
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      await loadProvider(
+        {
+          chainId: chain.id,
+          providers: rpcs.map((rpc, i) => ({
+            provider: rpc,
+            priority: i + 1,
+            weight: 2,
+          })),
+        },
+        networkName,
+      );
+      loadedProviders.add(networkName);
+      return;
+    } catch (err) {
+      console.warn(`[IncogPay] loadProvider attempt ${attempt}/${MAX_RETRIES} failed for ${networkName}:`, err);
+      if (attempt === MAX_RETRIES) throw err;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+  }
 }
 
 async function doInit(): Promise<void> {

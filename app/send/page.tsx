@@ -145,6 +145,8 @@ function friendlyError(err: unknown): string {
 
   if (lower.includes("no broadcaster available"))
     return "No relayer available for this token right now. Try again in a moment or switch networks.";
+  if (lower.includes("block number") || lower.includes("polling provider"))
+    return "RPC connection failed. Please try again — the network provider may be temporarily overloaded.";
   if (lower.includes("transfer amount exceeds balance"))
     return "Insufficient token balance. Check you have enough funds in your wallet.";
   if (lower.includes("transfer amount exceeds allowance"))
