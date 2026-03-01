@@ -124,7 +124,7 @@ export async function ensureProvider(networkName: NetworkName): Promise<void> {
           providers: rpcs.map((rpc, i) => ({
             provider: rpc,
             priority: i + 1,
-            weight: 2,
+            weight: 1,
           })),
         },
         networkName,
