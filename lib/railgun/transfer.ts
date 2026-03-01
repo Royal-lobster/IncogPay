@@ -179,20 +179,29 @@ export async function privateSend(
     onProgress?.("Generating proof...", Math.round(progress * 100));
   };
 
-  console.log("[IncogPay] Starting proof generation...");
-  await generateUnshieldProof(
-    TXID_VERSION,
-    networkName,
-    walletId,
-    encryptionKey,
-    erc20AmountRecipients,
-    [],
-    broadcasterFeeRecipient,
+  console.log("[IncogPay] Starting proof generation...", {
     selfRelay,
-    overallBatchMinGasPrice,
-    progressCallback,
-  );
-  console.log("[IncogPay] Proof generation complete");
+    hasBroadcasterFee: !!broadcasterFeeRecipient,
+    overallBatchMinGasPrice: overallBatchMinGasPrice.toString(),
+  });
+  try {
+    await generateUnshieldProof(
+      TXID_VERSION,
+      networkName,
+      walletId,
+      encryptionKey,
+      erc20AmountRecipients,
+      [],
+      broadcasterFeeRecipient,
+      selfRelay,
+      overallBatchMinGasPrice,
+      progressCallback,
+    );
+    console.log("[IncogPay] Proof generation complete");
+  } catch (proofErr) {
+    console.error("[IncogPay] generateUnshieldProof FAILED:", proofErr);
+    throw proofErr;
+  }
 
   // ── Step 4: Populate proved transaction ────────────────────────────────
   onProgress?.("Preparing transaction...");
