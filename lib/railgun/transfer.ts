@@ -5,10 +5,12 @@ import type {
 } from "@railgun-community/shared-models";
 import { EVMGasType, NETWORK_CONFIG } from "@railgun-community/shared-models";
 import {
+  balanceForERC20Token,
   gasEstimateForUnprovenUnshield,
   generateUnshieldProof,
   populateProvedUnshield,
   refreshBalances,
+  walletForID,
 } from "@railgun-community/wallet";
 import { findBestBroadcaster, sendViaBroadcaster } from "./broadcaster";
 import { ensureProvider } from "./init";
@@ -42,6 +44,20 @@ export async function privateSend(
   await refreshBalances(chain, [walletId]).catch((err) => {
     console.warn("[IncogPay] refreshBalances warning:", err);
   });
+
+  // ── Diagnostic: check what the SDK thinks the balance is ───────────────
+  try {
+    const wallet = walletForID(walletId);
+    const spendable = await balanceForERC20Token(
+      TXID_VERSION, wallet, networkName, tokenAddress, true,
+    );
+    const total = await balanceForERC20Token(
+      TXID_VERSION, wallet, networkName, tokenAddress, false,
+    );
+    console.log(`[IncogPay] Balance check — spendable: ${spendable.toString()}, total: ${total.toString()}, token: ${tokenAddress}, amount needed: ${amount.toString()}`);
+  } catch (err) {
+    console.warn("[IncogPay] Diagnostic balance check failed:", err);
+  }
 
   // ── Step 1: Try to find a broadcaster ──────────────────────────────────
   onProgress?.("Finding relayer...");
