@@ -25,16 +25,26 @@ function createArtifactStore(): ArtifactStore {
     });
   });
 
+  // Do NOT use level-js { asBuffer: true } — it corrupts binary data.
+  // IndexedDB returns Uint8Array for binary values.  level-js checks
+  // Buffer.isBuffer(value), which is false for native Uint8Array in the
+  // browser, so it falls through to Buffer.from(String(value)) which
+  // turns the bytes into their comma-separated ASCII representation.
+  // Instead we retrieve the raw value and convert it ourselves.
   const get = async (path: string): Promise<string | Buffer | null> => {
     try {
       await dbReady;
-      const data = await new Promise<Buffer>((resolve, reject) => {
-        db.get(path, { asBuffer: true }, (err: Error | undefined, value: Buffer) => {
+      const raw = await new Promise<unknown>((resolve, reject) => {
+        db.get(path, { asBuffer: false }, (err: Error | undefined, value: unknown) => {
           if (err) reject(err);
           else resolve(value);
         });
       });
-      return data;
+      if (raw instanceof ArrayBuffer) return Buffer.from(raw);
+      if (raw instanceof Uint8Array) return Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength);
+      if (Buffer.isBuffer(raw)) return raw;
+      if (typeof raw === "string") return raw;
+      return null;
     } catch {
       return null;
     }
@@ -53,8 +63,8 @@ function createArtifactStore(): ArtifactStore {
   const exists = async (path: string): Promise<boolean> => {
     try {
       await dbReady;
-      await new Promise<Buffer>((resolve, reject) => {
-        db.get(path, { asBuffer: true }, (err: Error | undefined, value: Buffer) => {
+      await new Promise<unknown>((resolve, reject) => {
+        db.get(path, { asBuffer: false }, (err: Error | undefined, value: unknown) => {
           if (err) reject(err);
           else resolve(value);
         });
