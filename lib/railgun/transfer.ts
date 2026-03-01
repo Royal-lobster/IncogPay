@@ -37,35 +37,18 @@ export async function privateSend(
 
   // ── Step 1: Try to find a broadcaster ──────────────────────────────────
   onProgress?.("Finding relayer...");
-  const broadcaster = await findBestBroadcaster(
+  let broadcaster = await findBestBroadcaster(
     networkName,
     tokenAddress,
     (msg) => onProgress?.(msg),
   );
 
-  const selfRelay = !broadcaster;
-  if (selfRelay) {
-    onProgress?.("No relayer found — using self-relay...");
-  }
+  let selfRelay = !broadcaster;
 
-  const feeTokenDetails: FeeTokenDetails | undefined = broadcaster
-    ? { tokenAddress: broadcaster.tokenAddress, feePerUnitGas: broadcaster.feePerUnitGas }
-    : undefined;
-
-  const broadcasterFeeRecipient: RailgunERC20AmountRecipient | undefined = broadcaster
-    ? {
-        tokenAddress: broadcaster.tokenAddress,
-        amount: BigInt(0),
-        recipientAddress: broadcaster.railgunAddress,
-      }
-    : undefined;
-
+  // ── Step 2: Build + estimate (may fall back to self-relay) ─────────────
   const erc20AmountRecipients: RailgunERC20AmountRecipient[] = [
     { tokenAddress, amount, recipientAddress },
   ];
-
-  // ── Step 2: Estimate gas ───────────────────────────────────────────────
-  onProgress?.("Estimating gas...");
 
   const { defaultEVMGasType } = NETWORK_CONFIG[networkName];
   const dummyGasDetails: TransactionGasDetails =
@@ -82,16 +65,63 @@ export async function privateSend(
           gasPrice: BigInt(0),
         };
 
+  // If broadcaster found, try estimating with broadcaster fees first.
+  // If balance is too low to cover the fee, fall back to self-relay.
+  if (broadcaster && !selfRelay) {
+    onProgress?.("Estimating gas...");
+    try {
+      await gasEstimateForUnprovenUnshield(
+        TXID_VERSION,
+        networkName,
+        walletId,
+        encryptionKey,
+        erc20AmountRecipients,
+        [],
+        dummyGasDetails,
+        { tokenAddress: broadcaster.tokenAddress, feePerUnitGas: broadcaster.feePerUnitGas },
+        false,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.toLowerCase().includes("balance too low") || msg.toLowerCase().includes("broadcaster fee")) {
+        console.warn("[IncogPay] Broadcaster fee too high for balance, switching to self-relay");
+        onProgress?.("Fee too high for relayer — using self-relay...");
+        selfRelay = true;
+        broadcaster = null;
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  if (selfRelay) {
+    onProgress?.("Self-relay mode (you pay gas in ETH)...");
+  }
+
+  const feeTokenDetails: FeeTokenDetails | undefined = broadcaster
+    ? { tokenAddress: broadcaster.tokenAddress, feePerUnitGas: broadcaster.feePerUnitGas }
+    : undefined;
+
+  const broadcasterFeeRecipient: RailgunERC20AmountRecipient | undefined = broadcaster
+    ? {
+        tokenAddress: broadcaster.tokenAddress,
+        amount: BigInt(0),
+        recipientAddress: broadcaster.railgunAddress,
+      }
+    : undefined;
+
+  onProgress?.("Estimating gas...");
+
   const gasEstimate = await gasEstimateForUnprovenUnshield(
     TXID_VERSION,
     networkName,
     walletId,
     encryptionKey,
     erc20AmountRecipients,
-    [], // nftAmountRecipients
+    [],
     dummyGasDetails,
     feeTokenDetails,
-    selfRelay, // sendWithPublicWallet
+    selfRelay,
   );
 
   const overallBatchMinGasPrice = gasEstimate.gasEstimate ?? BigInt(0);
@@ -109,9 +139,9 @@ export async function privateSend(
     walletId,
     encryptionKey,
     erc20AmountRecipients,
-    [], // nftAmountRecipients
+    [],
     broadcasterFeeRecipient,
-    selfRelay, // sendWithPublicWallet
+    selfRelay,
     overallBatchMinGasPrice,
     progressCallback,
   );
@@ -138,16 +168,15 @@ export async function privateSend(
     networkName,
     walletId,
     erc20AmountRecipients,
-    [], // nftAmountRecipients
+    [],
     broadcasterFeeRecipient,
-    selfRelay, // sendWithPublicWallet
+    selfRelay,
     overallBatchMinGasPrice,
     finalGasDetails,
   );
 
   // ── Step 5: Send transaction ───────────────────────────────────────────
   if (selfRelay) {
-    // Return the raw transaction for the caller to submit via user's wallet
     onProgress?.("Sign in wallet...");
     return {
       txHash: "",
@@ -168,12 +197,12 @@ export async function privateSend(
       to: populateResult.transaction.to!,
       data: populateResult.transaction.data!,
     },
-    broadcaster.railgunAddress,
-    broadcaster.feesID,
+    broadcaster!.railgunAddress,
+    broadcaster!.feesID,
     chain,
     nullifiers,
     overallBatchMinGasPrice,
-    true, // useRelayAdapt
+    true,
     populateResult.preTransactionPOIsPerTxidLeafPerList,
   );
 
