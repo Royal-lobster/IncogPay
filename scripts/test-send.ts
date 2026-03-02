@@ -231,17 +231,29 @@ async function main() {
   // ── STEP 3: Balance sync ───────────────────────────────────────────────────
   step(3, "Balance Sync");
 
-  const MAX_POLLS = 8;
-  const POLL_MS   = 12_000;
+  const MAX_POLLS = parseInt(env["MAX_POLLS"] ?? "8", 10);
+  const POLL_MS   = parseInt(env["POLL_MS"] ?? "12000", 10);
   let spendable   = BigInt(0);
   let total       = BigInt(0);
 
-  info("Syncing merkle tree (first run from creation block is slow, subsequent runs fast)...");
+  info("Syncing merkle tree (first run can be slow — use a fast RPC like Alchemy/QuickNode)...");
   info(`Tip: set CREATION_BLOCK to the block when you first shielded to speed this up.`);
 
+  // Helper: run refreshBalances with a per-attempt timeout so the script
+  // never hangs forever on a slow or rate-limited RPC.
+  const refreshWithTimeout = (timeoutMs: number) =>
+    Promise.race([
+      refreshBalances(chain, [railgunWalletId]).catch((e: unknown) => {
+        warn(`refreshBalances: ${e}`);
+      }),
+      new Promise<void>(resolve => setTimeout(() => {
+        warn(`refreshBalances timed out after ${timeoutMs / 1000}s (slow RPC?) — checking cached balance anyway`);
+        resolve();
+      }, timeoutMs)),
+    ]);
+
   for (let i = 1; i <= MAX_POLLS; i++) {
-    try { await refreshBalances(chain, [railgunWalletId]); }
-    catch (e) { warn(`refreshBalances attempt ${i}: ${e}`); }
+    await refreshWithTimeout(25_000);
 
     try {
       const w = walletForID(railgunWalletId);
