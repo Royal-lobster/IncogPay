@@ -2,9 +2,7 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
-  ArrowCounterClockwise,
   ArrowLeft,
-  ArrowSquareOut,
   CaretDown,
   CheckCircle,
   CircleNotch,
@@ -13,7 +11,6 @@ import {
   PaperPlaneTilt,
   ShieldCheck,
   Wallet,
-  Warning,
 } from "@phosphor-icons/react";
 import { defineStepper } from "@stepperize/react";
 import { useMutation } from "@tanstack/react-query";
@@ -30,8 +27,13 @@ import {
   useWriteContract,
 } from "wagmi";
 import { z } from "zod";
-import { ChainIcon } from "@/components/ChainIcon";
-import { TokenIcon } from "@/components/TokenIcon";
+import { ConnectStep } from "@/components/send/ConnectStep";
+import { DoneStep } from "@/components/send/DoneStep";
+import { type ExistingBalance, FormStep } from "@/components/send/FormStep";
+import { MixingStep } from "@/components/send/MixingStep";
+import { PreflightStep } from "@/components/send/PreflightStep";
+import { SendStep } from "@/components/send/SendStep";
+import { ShieldStep } from "@/components/send/ShieldStep";
 import { WalletConnectModal } from "@/components/WalletConnectModal";
 import { WalletSwitcherModal } from "@/components/WalletSwitcherModal";
 import {
@@ -99,79 +101,10 @@ const PROGRESS_META = {
   },
 } as const;
 
-const HOW_IT_WORKS = [
-  { icon: ShieldCheck, text: "Approve and shield your funds into RAILGUN's private pool." },
-  { icon: Clock, text: "Funds mix for ~1 hour while RAILGUN runs its on-chain privacy check." },
-  {
-    icon: PaperPlaneTilt,
-    text: "Enter recipient, generate a ZK proof, and send via relayer. No ETH needed.",
-  },
-];
-
-const PREFLIGHT_STEPS = [
-  {
-    icon: Wallet,
-    role: "Step 1",
-    title: "Deposit into private pool",
-    desc: "Approve + shield your funds. You'll need a tiny amount of gas (~$0.10).",
-    time: "~2 min",
-  },
-  {
-    icon: Clock,
-    role: "Step 2",
-    title: "Funds mix in pool",
-    desc: "RAILGUN runs an on-chain privacy check. Funds are safe — cancel anytime.",
-    time: "~1 hour",
-  },
-  {
-    icon: PaperPlaneTilt,
-    role: "Step 3",
-    title: "Enter recipient & send",
-    desc: "Confirm the destination. No native token needed — relayer handles gas.",
-    time: "~1 min",
-  },
-];
-
 function fmtAddr(a: string) {
   return `${a.slice(0, 6)}…${a.slice(-4)}`;
 }
 
-/** Parse raw blockchain / SDK errors into short, actionable messages. */
-function friendlyError(err: unknown): string {
-  const msg = err instanceof Error ? err.message : String(err);
-  const lower = msg.toLowerCase();
-
-  console.error("[IncogPay] Raw error:", msg);
-
-  if (lower.includes("no broadcaster available"))
-    return "No relayer available for this token right now. Try again in a moment or switch networks.";
-  if (lower.includes("private balance not found after scanning") || lower.includes("merkle tree may still be syncing"))
-    return "Wallet is still syncing your private balance. Please wait a minute and try again.";
-  if (lower.includes("balance too low") || lower.includes("broadcaster fee"))
-    return "Balance too low to cover relayer fee. Ensure you have some ETH for gas and try again.";
-  if (lower.includes("block number") || lower.includes("polling provider"))
-    return "RPC connection failed. Please try again — the network provider may be temporarily overloaded.";
-  if (lower.includes("transfer amount exceeds balance"))
-    return "Insufficient token balance. Check you have enough funds in your wallet.";
-  if (lower.includes("transfer amount exceeds allowance"))
-    return "Token approval failed. Please try again.";
-  if (lower.includes("insufficient funds"))
-    return "Not enough ETH for gas. Add a small amount of native token to cover fees.";
-  if (lower.includes("user rejected") || lower.includes("user denied"))
-    return "Transaction rejected in wallet.";
-  if (lower.includes("nonce"))
-    return "Transaction conflict. Try again in a moment.";
-  if (lower.includes("rpc") || lower.includes("timeout") || lower.includes("failed to fetch"))
-    return "Network error. Check your connection and try again.";
-  if (lower.includes("execution reverted"))
-    return "Transaction would fail on-chain. Double-check your balance and try again.";
-
-  // Fallback: truncate to something readable
-  const reason = msg.match(/reason="([^"]+)"/)?.[1];
-  if (reason) return reason;
-
-  return msg.length > 120 ? `${msg.slice(0, 117)}…` : msg;
-}
 // ─── component ────────────────────────────────────────────────────────────────
 export default function SendPage() {
   return (
@@ -269,6 +202,31 @@ function SendPageInner() {
     setChainOpen(false);
   };
 
+  const handleTokenChange = (t: typeof formToken) => {
+    form.setValue("token", t);
+  };
+
+  const handleSkipToSend = (balance: ExistingBalance) => {
+    const tokenInfo = TOKENS_BY_CHAIN[formChain.id].find((t) => t.address === balance.tokenAddress);
+    if (tokenInfo) {
+      const amount = (Number(balance.amount) / 10 ** tokenInfo.decimals).toFixed(2);
+      setIntent({ amount, token: tokenInfo.symbol });
+      form.setValue("token", tokenInfo);
+      form.setValue("amount", amount);
+    }
+    stepper.navigation.goTo("send");
+  };
+
+  const handleSignAndCheck = async () => {
+    try {
+      const sig = await signMessageAsync({ message: SIGN_MESSAGE });
+      await getOrCreateWallet(sig);
+      await checkExistingBalances();
+    } catch {
+      // User rejected sign or check failed — ignore
+    }
+  };
+
   // ── intent (locked in when advancing from form → preflight)
   const [intent, setIntent] = useState<{ amount: string; token: string } | null>(null);
 
@@ -277,9 +235,7 @@ function SendPageInner() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [mixingStartedAt, setMixingStartedAt] = useState<number | null>(null);
   const [needsResign, setNeedsResign] = useState(false);
-  const [existingBalances, setExistingBalances] = useState<
-    { tokenAddress: string; amount: bigint; symbol: string }[] | null
-  >(null);
+  const [existingBalances, setExistingBalances] = useState<ExistingBalance[] | null>(null);
   const [checkingBalances, setCheckingBalances] = useState(false);
 
   // ── send state (declared early so persist effect can reference them)
@@ -610,269 +566,33 @@ function SendPageInner() {
             {/* ── Card body — scrollable ── */}
             <div className="flex-1 overflow-y-auto min-h-0 px-5 py-4 space-y-3">
               {/* ── connect ── */}
-              {phase === "connect" && (
-                <>
-                  <div>
-                    <h2 className="text-sm font-semibold text-zinc-100">Connect Wallet</h2>
-                    <p className="text-xs text-zinc-500 mt-1">
-                      Connect a Web3 wallet to get started. No transaction yet — just a connection.
-                    </p>
-                  </div>
-                  <ul className="space-y-2.5">
-                    {HOW_IT_WORKS.map((item, i) => (
-                      <li
-                        key={i}
-                        className="flex items-start gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3.5 py-3"
-                      >
-                        <item.icon
-                          size={13}
-                          weight="duotone"
-                          className="text-pink-400 mt-0.5 shrink-0"
-                        />
-                        <span className="text-xs text-zinc-400">{item.text}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              )}
+              {phase === "connect" && <ConnectStep />}
 
               {/* ── form ── */}
               {phase === "form" && (
-                <>
-                  {/* Existing private balance banner */}
-                  {existingBalances && existingBalances.length > 0 && (
-                    <div className="rounded-xl border border-emerald-900/50 bg-emerald-950/20 p-3 space-y-2">
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck size={13} weight="duotone" className="text-emerald-400 shrink-0" />
-                        <p className="text-xs font-medium text-emerald-300">
-                          You have private funds ready to send
-                        </p>
-                      </div>
-                      <div className="space-y-1">
-                        {existingBalances.map((b) => {
-                          const tokenInfo = TOKENS_BY_CHAIN[formChain.id].find(
-                            (t) => t.address === b.tokenAddress,
-                          );
-                          const decimals = tokenInfo?.decimals ?? 18;
-                          const display = (Number(b.amount) / 10 ** decimals).toFixed(2);
-                          return (
-                            <div key={b.tokenAddress} className="flex justify-between text-xs px-0.5">
-                              <span className="text-zinc-400">{b.symbol}</span>
-                              <span className="text-zinc-200 font-medium">{display}</span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      <button
-                        onClick={() => {
-                          // Pick the first token with balance and jump to send
-                          const first = existingBalances[0];
-                          const tokenInfo = TOKENS_BY_CHAIN[formChain.id].find(
-                            (t) => t.address === first.tokenAddress,
-                          );
-                          if (tokenInfo) {
-                            const decimals = tokenInfo.decimals;
-                            const amount = (Number(first.amount) / 10 ** decimals).toFixed(2);
-                            setIntent({ amount, token: tokenInfo.symbol });
-                            form.setValue("token", tokenInfo);
-                            form.setValue("amount", amount);
-                          }
-                          stepper.navigation.goTo("send");
-                        }}
-                        className="w-full py-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs font-medium text-emerald-300 hover:bg-emerald-500/20 transition-colors"
-                      >
-                        Skip to Send →
-                      </button>
-                    </div>
-                  )}
-                  {checkingBalances && (
-                    <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3 py-2.5">
-                      <CircleNotch size={12} className="animate-spin text-zinc-500 shrink-0" />
-                      <p className="text-xs text-zinc-500">Checking for existing private funds…</p>
-                    </div>
-                  )}
-                  {existingBalances !== null && existingBalances.length === 0 && (
-                    <div className="flex items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3 py-2.5">
-                      <ShieldCheck size={12} weight="duotone" className="text-zinc-600 shrink-0" />
-                      <p className="text-xs text-zinc-500">No private funds found. Proceed with a new deposit below.</p>
-                    </div>
-                  )}
-                  {existingBalances === null && !checkingBalances && (
-                    <button
-                      onClick={async () => {
-                        try {
-                          const sig = await signMessageAsync({ message: SIGN_MESSAGE });
-                          await getOrCreateWallet(sig);
-                          await checkExistingBalances();
-                        } catch {
-                          // User rejected sign or check failed — ignore
-                        }
-                      }}
-                      className="flex items-center gap-2 rounded-xl border border-dashed border-zinc-700 bg-zinc-900/20 px-3 py-2.5 text-xs text-zinc-500 hover:text-zinc-300 hover:border-zinc-500 transition-colors w-full"
-                    >
-                      <ShieldCheck size={12} weight="duotone" className="shrink-0" />
-                      Already shielded funds? Sign to check balance
-                    </button>
-                  )}
-                  <div>
-                    <h2 className="text-sm font-semibold text-zinc-100">Enter Amount</h2>
-                    <p className="text-xs text-zinc-500 mt-1">
-                      Choose a network, token, and how much to send.
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-                    {/* Chain */}
-                    <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800">
-                      <span className="text-xs text-zinc-500">Network</span>
-                      <div className="relative">
-                        <button
-                          onClick={() => {
-                            setChainOpen(!chainOpen);
-                            setTokenOpen(false);
-                          }}
-                          className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-200 hover:border-zinc-500 transition-colors"
-                        >
-                          <ChainIcon chainId={formChain.id} size={14} />
-                          {formChain.label}
-                          <CaretDown size={10} weight="bold" className="text-zinc-500" />
-                        </button>
-                        {chainOpen && (
-                          <div className="absolute right-0 top-full mt-1.5 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-30 overflow-hidden w-44">
-                            {SUPPORTED_CHAINS.map((c) => (
-                              <button
-                                key={c.id}
-                                onClick={() => handleChainChange(c)}
-                                className={`w-full text-left px-3 py-2.5 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2.5 ${c.id === formChain.id ? "text-pink-400" : "text-zinc-300"}`}
-                              >
-                                <ChainIcon chainId={c.id} size={16} />
-                                {c.label}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Amount + token */}
-                    <div className="text-xs text-zinc-500 mb-2">Amount</div>
-                    <div className="flex items-center gap-3 mb-1">
-                      <input
-                        type="number"
-                        {...form.register("amount")}
-                        placeholder="0.00"
-                        className="min-w-0 flex-1 text-2xl font-semibold bg-transparent text-zinc-100 placeholder:text-zinc-700 focus:outline-none"
-                        min="0"
-                      />
-                      <div className="relative shrink-0">
-                        <button
-                          onClick={() => {
-                            setTokenOpen(!tokenOpen);
-                            setChainOpen(false);
-                          }}
-                          className="flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-medium text-zinc-200 hover:border-zinc-500 transition-colors"
-                        >
-                          <TokenIcon symbol={formToken.symbol} size={14} />
-                          {formToken.symbol}
-                          <CaretDown size={10} weight="bold" className="text-zinc-500" />
-                        </button>
-                        {tokenOpen && (
-                          <div className="absolute right-0 top-full mt-1.5 rounded-xl border border-zinc-800 bg-zinc-900 shadow-xl z-30 overflow-hidden w-32">
-                            {formTokens.map((t) => (
-                              <button
-                                key={t.symbol}
-                                onClick={() => {
-                                  form.setValue("token", t);
-                                  setTokenOpen(false);
-                                }}
-                                className={`w-full text-left px-3 py-2 text-sm hover:bg-zinc-800 transition-colors flex items-center gap-2.5 ${t.symbol === formToken.symbol ? "text-pink-400" : "text-zinc-300"}`}
-                              >
-                                <TokenIcon symbol={t.symbol} size={14} />
-                                {t.symbol}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Fee breakdown */}
-                    {formNumeric > 0 && (
-                      <div className="pt-3 mt-2 border-t border-zinc-800 space-y-1">
-                        <div className="flex justify-between text-xs text-zinc-600">
-                          <span>Protocol fee (0.25%)</span>
-                          <span>
-                            −{formFee.toFixed(2)} {formToken.symbol}
-                          </span>
-                        </div>
-                        <div className="flex justify-between text-xs">
-                          <span className="text-zinc-400">Recipient receives</span>
-                          <span className="text-zinc-100 font-medium">
-                            {formReceive.toFixed(2)} {formToken.symbol}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Large amount warning */}
-                    {formNumeric >= 10000 && (
-                      <div className="flex gap-2 mt-3 rounded-lg border border-amber-900/50 bg-amber-950/20 px-3 py-2">
-                        <Warning
-                          size={12}
-                          weight="fill"
-                          className="text-amber-400 mt-0.5 shrink-0"
-                        />
-                        <p className="text-xs text-amber-400">
-                          Fee at this amount: <strong>${formFee.toFixed(0)}</strong>
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </>
+                <FormStep
+                  existingBalances={existingBalances}
+                  checkingBalances={checkingBalances}
+                  formChain={formChain}
+                  formToken={formToken}
+                  formTokens={formTokens}
+                  formNumeric={formNumeric}
+                  formFee={formFee}
+                  formReceive={formReceive}
+                  chainOpen={chainOpen}
+                  setChainOpen={setChainOpen}
+                  tokenOpen={tokenOpen}
+                  setTokenOpen={setTokenOpen}
+                  handleChainChange={handleChainChange}
+                  onTokenChange={handleTokenChange}
+                  registerAmount={form.register("amount")}
+                  onSignAndCheck={handleSignAndCheck}
+                  onSkipToSend={handleSkipToSend}
+                />
               )}
 
               {/* ── preflight ── */}
-              {phase === "preflight" && (
-                <>
-                  <div>
-                    <h2 className="text-sm font-semibold text-zinc-100">What to expect</h2>
-                    <p className="text-xs text-zinc-500 mt-1">
-                      Three steps to send privately. You can cancel at any point.
-                    </p>
-                  </div>
-                  <ul className="space-y-2">
-                    {PREFLIGHT_STEPS.map((s, i) => (
-                      <li
-                        key={i}
-                        className="flex gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 p-3"
-                      >
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-pink-500/10 ring-1 ring-pink-500/20">
-                          <s.icon size={13} weight="duotone" className="text-pink-400" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex justify-between mb-0.5">
-                            <span className="text-[10px] font-medium uppercase tracking-widest text-zinc-500">
-                              {s.role}
-                            </span>
-                            <span className="text-[10px] text-zinc-600">{s.time}</span>
-                          </div>
-                          <p className="text-xs font-medium text-zinc-200 mb-0.5">{s.title}</p>
-                          <p className="text-xs text-zinc-500">{s.desc}</p>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="flex gap-2.5 rounded-xl border border-zinc-800 px-3 py-2.5">
-                    <ArrowCounterClockwise
-                      size={12}
-                      weight="bold"
-                      className="text-zinc-600 mt-0.5 shrink-0"
-                    />
-                    <p className="text-xs text-zinc-500">
-                      Cancel at any step. Funds return minus gas (~$0.10–$3).
-                    </p>
-                  </div>
-                </>
-              )}
+              {phase === "preflight" && <PreflightStep />}
 
               {/* ── progress tracker (shield / mixing / send) ── */}
               {isProgress && (
@@ -902,209 +622,39 @@ function SendPageInner() {
 
               {/* ── shield ── */}
               {phase === "shield" && intent && (
-                <>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/10 ring-1 ring-pink-500/20">
-                      <ShieldCheck size={17} weight="duotone" className="text-pink-400" />
-                    </div>
-                    <div>
-                      <h2 className="text-sm font-semibold text-zinc-100">
-                        {PROGRESS_META.shield.heading}
-                      </h2>
-                      <p className="text-xs text-zinc-500 mt-0.5">{PROGRESS_META.shield.sub}</p>
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-zinc-400">You deposit</span>
-                      <span className="text-zinc-100 font-medium">
-                        {intent.amount} {intent.token}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-xs text-zinc-600">
-                      <span>Protocol fee (0.25%)</span>
-                      <span>
-                        −{(parseFloat(intent.amount) * 0.0025).toFixed(2)} {intent.token}
-                      </span>
-                    </div>
-                    <div className="h-px bg-zinc-800" />
-                    <div className="flex justify-between text-sm">
-                      <span className="text-zinc-400">Private balance</span>
-                      <span className="text-emerald-400 font-medium">
-                        +{(parseFloat(intent.amount) * 0.9975).toFixed(2)} {intent.token}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="rounded-xl border border-zinc-800 px-3 py-2.5">
-                    <p className="text-xs text-zinc-500">
-                      You'll also need a small amount of native token for gas (~$0.10).
-                    </p>
-                  </div>
-                  {shieldMutation.isError && (
-                    <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-3 py-2.5">
-                      <p className="text-xs text-red-400">
-                        {friendlyError(shieldMutation.error)}
-                      </p>
-                    </div>
-                  )}
-                </>
+                <ShieldStep
+                  intent={intent}
+                  error={shieldMutation.isError ? shieldMutation.error : undefined}
+                />
               )}
 
               {/* ── mixing ── */}
               {phase === "mixing" && (
-                <>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/10 ring-1 ring-pink-500/20">
-                      <Clock size={17} weight="duotone" className="text-pink-400" />
-                    </div>
-                    <div>
-                      <h2 className="text-sm font-semibold text-zinc-100">
-                        {PROGRESS_META.mixing.heading}
-                      </h2>
-                      <p className="text-xs text-zinc-500 mt-0.5">{PROGRESS_META.mixing.sub}</p>
-                    </div>
-                  </div>
-                  {needsResign ? (
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
-                      <div className="flex items-center gap-3">
-                        <Wallet size={16} weight="duotone" className="text-pink-400 shrink-0" />
-                        <div>
-                          <p className="text-sm text-zinc-300">Session restored</p>
-                          <p className="text-xs text-zinc-600 mt-0.5">
-                            Sign to unlock your private wallet and resume mixing.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-                      <div className="flex items-center gap-3">
-                        <CircleNotch size={16} className="animate-spin text-pink-400 shrink-0" />
-                        <div>
-                          <p className="text-sm text-zinc-300">{poiStatus}</p>
-                          <p className="text-xs text-zinc-600 mt-0.5">
-                            This typically takes a few minutes
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {txHash && (
-                    <a
-                      href={`https://arbiscan.io/tx/${txHash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex items-center gap-1.5 text-xs text-zinc-600 hover:text-pink-400 transition-colors"
-                    >
-                      <ArrowSquareOut size={12} weight="bold" />
-                      View deposit on explorer
-                    </a>
-                  )}
-                  <div className="rounded-xl border border-zinc-800 px-3 py-2.5">
-                    <p className="text-xs text-zinc-500">
-                      You can close this tab and come back — progress is saved locally.
-                    </p>
-                  </div>
-                </>
+                <MixingStep
+                  needsResign={needsResign}
+                  poiStatus={poiStatus}
+                  txHash={txHash}
+                  formChain={formChain}
+                />
               )}
 
               {/* ── send ── */}
               {phase === "send" && intent && (
-                <>
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/10 ring-1 ring-pink-500/20">
-                      <PaperPlaneTilt size={17} weight="duotone" className="text-pink-400" />
-                    </div>
-                    <div>
-                      <h2 className="text-sm font-semibold text-zinc-100">
-                        {PROGRESS_META.send.heading}
-                      </h2>
-                      <p className="text-xs text-zinc-500 mt-0.5">{PROGRESS_META.send.sub}</p>
-                    </div>
-                  </div>
-                  {needsResign ? (
-                    <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 space-y-3">
-                      <div className="flex items-center gap-3">
-                        <Wallet size={16} weight="duotone" className="text-pink-400 shrink-0" />
-                        <div>
-                          <p className="text-sm text-zinc-300">Session restored</p>
-                          <p className="text-xs text-zinc-600 mt-0.5">
-                            Sign to unlock your private wallet and continue sending.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="flex justify-between text-xs px-0.5">
-                        <span className="text-zinc-600">Available</span>
-                        <span className="text-zinc-400">
-                          {sendAvail.toFixed(2)} {intent.token}
-                        </span>
-                      </div>
-                      <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 overflow-hidden">
-                        <div className="px-4 pt-3.5 pb-3 border-b border-zinc-800/60">
-                          <div className="text-xs text-zinc-500 mb-1.5">Recipient address</div>
-                          <input
-                            type="text"
-                            value={recipient}
-                            onChange={(e) => setRecipient(e.target.value)}
-                            placeholder="0x…"
-                            className="w-full bg-transparent text-sm text-zinc-100 placeholder:text-zinc-700 focus:outline-none font-mono"
-                          />
-                        </div>
-                        <div className="px-4 pt-3 pb-3.5">
-                          <div className="text-xs text-zinc-500 mb-1.5">Amount</div>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="number"
-                              value={sendAmount}
-                              onChange={(e) => setSendAmount(e.target.value)}
-                              max={sendAvail}
-                              min={0}
-                              className="flex-1 bg-transparent text-xl font-semibold text-zinc-100 focus:outline-none"
-                            />
-                            <span className="text-xs text-zinc-500">{intent.token}</span>
-                            <button
-                              onClick={() => setSendAmount(sendAvail.toFixed(2))}
-                              className="text-[10px] font-medium text-pink-400 border border-pink-500/30 rounded-full px-2 py-1 hover:bg-pink-500/10 transition-colors uppercase tracking-widest"
-                            >
-                              Max
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="flex gap-2.5 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3 py-2.5">
-                        <ShieldCheck
-                          size={12}
-                          weight="duotone"
-                          className="text-emerald-400 mt-0.5 shrink-0"
-                        />
-                        <p className="text-xs text-zinc-500">
-                          Recipient sees funds from the RAILGUN relayer — not your wallet.
-                        </p>
-                      </div>
-                      {sendMutation.isError && (
-                        <div className="rounded-xl border border-red-900/50 bg-red-950/20 px-3 py-2.5">
-                          <p className="text-xs text-red-400">
-                            {friendlyError(sendMutation.error)}
-                          </p>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </>
+                <SendStep
+                  intent={intent}
+                  needsResign={needsResign}
+                  sendAvail={sendAvail}
+                  recipient={recipient}
+                  setRecipient={setRecipient}
+                  sendAmount={sendAmount}
+                  setSendAmount={setSendAmount}
+                  isError={sendMutation.isError}
+                  error={sendMutation.isError ? sendMutation.error : undefined}
+                />
               )}
 
               {/* ── done ── */}
-              {phase === "done" && (
-                <div className="flex flex-col items-center justify-center h-full text-center py-6">
-                  <p className="text-sm text-zinc-400 max-w-xs">
-                    Funds sent privately. Recipient's on-chain view shows only the RAILGUN relayer
-                    address.
-                  </p>
-                </div>
-              )}
+              {phase === "done" && <DoneStep />}
             </div>
 
             {/* ── Card footer — pinned CTAs ── */}
