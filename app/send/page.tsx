@@ -13,12 +13,10 @@ import {
   Wallet,
 } from "@phosphor-icons/react";
 import { defineStepper } from "@stepperize/react";
-import { useMutation } from "@tanstack/react-query";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
-import { parseUnits } from "viem";
 import {
   useAccount,
   useConnect,
@@ -36,18 +34,12 @@ import { SendStep } from "@/components/send/SendStep";
 import { ShieldStep } from "@/components/send/ShieldStep";
 import { WalletConnectModal } from "@/components/WalletConnectModal";
 import { WalletSwitcherModal } from "@/components/WalletSwitcherModal";
-import {
-  getCachedWallet,
-  getOrCreateWallet,
-  getShieldContractAddress,
-  getShieldSignMessage,
-  getSpendableBalances,
-  populateShieldTx,
-  privateSend,
-  SIGN_MESSAGE,
-  waitForSpendable,
-} from "@/lib/railgun";
-import { clearSendFlow, loadSendFlow, saveSendFlow } from "@/lib/send-flow-storage";
+import { useFlowPersistence } from "@/hooks/send/useFlowPersistence";
+import { usePPOIPolling } from "@/hooks/send/usePPOIPolling";
+import { useSendFlow } from "@/hooks/send/useSendFlow";
+import { useShieldFlow } from "@/hooks/send/useShieldFlow";
+import { getOrCreateWallet, SIGN_MESSAGE } from "@/lib/railgun";
+import { clearSendFlow } from "@/lib/send-flow-storage";
 import { SUPPORTED_CHAINS, type SupportedChain, TOKENS_BY_CHAIN } from "@/lib/wagmi";
 
 // ─── stepper ──────────────────────────────────────────────────────────────────
@@ -230,279 +222,72 @@ function SendPageInner() {
   // ── intent (locked in when advancing from form → preflight)
   const [intent, setIntent] = useState<{ amount: string; token: string } | null>(null);
 
-  // ── shield mutation
-  const [shieldSubPhase, setShieldSubPhase] = useState<"approving" | "shielding">("approving");
+  // ── cross-cutting flow state (read by multiple hooks + JSX)
   const [txHash, setTxHash] = useState<string | null>(null);
   const [mixingStartedAt, setMixingStartedAt] = useState<number | null>(null);
   const [needsResign, setNeedsResign] = useState(false);
-  const [existingBalances, setExistingBalances] = useState<ExistingBalance[] | null>(null);
-  const [checkingBalances, setCheckingBalances] = useState(false);
-
-  // ── send state (declared early so persist effect can reference them)
-  const [sendSubLabel, setSendSubLabel] = useState<"proving" | "broadcasting">("proving");
   const [sendAmount, setSendAmount] = useState("");
-  const [proofProgress, setProofProgress] = useState(0);
 
-  // ── restore persisted send flow on mount
-  useEffect(() => {
-    if (!mounted || !isConnected) return;
-
-    const saved = loadSendFlow();
-    if (!saved) return;
-
-    // Restore chain
-    const chain = SUPPORTED_CHAINS.find((c) => c.id === saved.chainId);
-    if (!chain) {
-      clearSendFlow();
-      return;
-    }
-
-    // Restore form values
-    form.setValue("chain", chain);
-    const token = TOKENS_BY_CHAIN[chain.id].find((t) => t.symbol === saved.intent.token);
-    if (token) form.setValue("token", token);
-    form.setValue("amount", saved.intent.amount);
-
-    // Restore flow state
-    setIntent(saved.intent);
-    setTxHash(saved.txHash);
-    setMixingStartedAt(saved.mixingStartedAt);
-    setRecipient(saved.recipient);
-    setSendAmount(saved.sendAmount);
-
-    // Navigate to saved phase
-    stepper.navigation.goTo(saved.phase);
-
-    // If mixing or send phase, wallet encryption key is lost on refresh — need re-sign
-    if ((saved.phase === "mixing" || saved.phase === "send") && !getCachedWallet()) {
-      setNeedsResign(true);
-    }
-  }, [mounted, isConnected]);
-
-  // ── persist flow state on change
-  useEffect(() => {
-    if (!intent) return;
-    saveSendFlow({
-      phase: phase as "shield" | "mixing" | "send",
+  // ── hooks ─────────────────────────────────────────────────────────────
+  const { shieldMutation, shieldSubPhase, existingBalances, checkingBalances, checkExistingBalances, shieldButtonLabel } =
+    useShieldFlow({
       intent,
-      chainId: formChain.id,
-      txHash,
-      mixingStartedAt,
-      recipient,
-      sendAmount,
+      address,
+      formChain,
+      signMessageAsync,
+      writeContractAsync,
+      sendTransactionAsync,
+      onSuccess: (hash, startedAt) => {
+        setTxHash(hash);
+        setMixingStartedAt(startedAt);
+        stepper.navigation.goTo("mixing");
+      },
     });
-  }, [phase, intent, txHash, mixingStartedAt, recipient, sendAmount, formChain.id]);
 
-  // ── check for existing spendable balances (after signing to resume or fresh connect)
-  const checkExistingBalances = async () => {
-    const wallet = getCachedWallet();
-    if (!wallet) {
-      console.warn("[IncogPay] checkExistingBalances: no cached wallet");
-      setExistingBalances([]);
-      return;
-    }
-
-    setCheckingBalances(true);
-    try {
-      const tokens = TOKENS_BY_CHAIN[formChain.id];
-      const balances = await getSpendableBalances(
-        formChain.id,
-        wallet.walletId,
-        tokens.map((t) => t.address),
-      );
-
-      setExistingBalances(
-        balances.map((b) => ({
-          ...b,
-          symbol: tokens.find((t) => t.address === b.tokenAddress)?.symbol ?? "???",
-        })),
-      );
-    } catch (err) {
-      console.error("[IncogPay] checkExistingBalances failed:", err);
-      setExistingBalances([]);
-    } finally {
-      setCheckingBalances(false);
-    }
-  };
-
-  const shieldMutation = useMutation({
-    mutationFn: async () => {
-      if (!intent || !address) throw new Error("Missing intent or wallet");
-
-      const chainId = formChain.id;
-      const tokenInfo = TOKENS_BY_CHAIN[chainId].find((t) => t.symbol === intent.token);
-      if (!tokenInfo) throw new Error("Token not found");
-
-      // 1. Sign message to derive RAILGUN wallet
-      setShieldSubPhase("approving");
-      const walletSig = await signMessageAsync({ message: SIGN_MESSAGE });
-      const wallet = await getOrCreateWallet(walletSig);
-
-      // 2. Sign shield private key message
-      const shieldMsg = getShieldSignMessage();
-      const shieldSig = await signMessageAsync({ message: shieldMsg });
-
-      // 3. Approve ERC20 spending to the RAILGUN proxy contract
-      const amount = parseUnits(intent.amount, tokenInfo.decimals);
-      const proxyContract = getShieldContractAddress(chainId);
-
-      await writeContractAsync({
-        address: tokenInfo.address as `0x${string}`,
-        abi: [
-          {
-            name: "approve",
-            type: "function",
-            stateMutability: "nonpayable",
-            inputs: [
-              { name: "spender", type: "address" },
-              { name: "amount", type: "uint256" },
-            ],
-            outputs: [{ name: "", type: "bool" }],
-          },
-        ] as const,
-        functionName: "approve",
-        args: [proxyContract as `0x${string}`, amount],
-      });
-
-      // 4. Populate and send shield transaction
-      setShieldSubPhase("shielding");
-      const { transaction } = await populateShieldTx(
-        chainId,
-        shieldSig,
-        tokenInfo.address,
-        amount,
-        wallet.railgunAddress,
-        address, // fromWalletAddress (the user's public EOA)
-      );
-
-      const txHash = await sendTransactionAsync({
-        to: transaction.to as `0x${string}`,
-        data: transaction.data as `0x${string}`,
-        value: transaction.value ? BigInt(transaction.value.toString()) : BigInt(0),
-      });
-
-      return { txHash };
-    },
-    onSuccess: ({ txHash: hash }) => {
-      setTxHash(hash);
-      setMixingStartedAt(Date.now());
-      stepper.navigation.goTo("mixing");
-    },
-  });
-
-  // ── PPOI polling (replaces mixing timer)
-  const [poiStatus, setPoiStatus] = useState<string>("Waiting for privacy verification...");
-
-  useEffect(() => {
-    if (phase !== "mixing" || needsResign) return;
-
-    const wallet = getCachedWallet();
-    if (!wallet) return;
-
-    const abortController = new AbortController();
-
-    waitForSpendable(
-      formChain.id,
-      wallet.walletId,
-      (status) => setPoiStatus(status),
-      30_000,
-      abortController.signal,
-    )
-      .then(() => {
-        stepper.navigation.goTo("send");
-      })
-      .catch((err) => {
-        if (err.name !== "AbortError") {
-          console.error("PPOI polling failed:", err);
-        }
-      });
-
-    return () => abortController.abort();
-  }, [phase, needsResign]);
-
-  // ── send mutation
-  const sendMutation = useMutation({
-    mutationFn: async () => {
-      if (!intent) throw new Error("No intent");
-
-      const wallet = getCachedWallet();
-      if (!wallet) throw new Error("RAILGUN wallet not initialized");
-
-      const tokenInfo = TOKENS_BY_CHAIN[formChain.id].find((t) => t.symbol === intent.token);
-      if (!tokenInfo) throw new Error("Token not found");
-
-      const amount = parseUnits(sendAmount, tokenInfo.decimals);
-
-      const result = await privateSend(
-        formChain.id,
-        wallet.walletId,
-        wallet.encryptionKey,
-        tokenInfo.address,
-        amount,
-        recipient,
-        (phase, pct) => {
-          if (phase.includes("proof")) {
-            setSendSubLabel("proving");
-            setProofProgress(pct ?? 0);
-          } else if (phase.includes("Broadcasting") || phase.includes("relayer")) {
-            setSendSubLabel("broadcasting");
-          } else if (phase.includes("Sign in wallet")) {
-            setSendSubLabel("broadcasting");
-          }
-        },
-      );
-
-      // Self-relay: no broadcaster found, user's wallet submits the tx directly
-      if (result.selfRelayTx) {
-        setSendSubLabel("broadcasting");
-        const hash = await sendTransactionAsync({
-          to: result.selfRelayTx.to as `0x${string}`,
-          data: result.selfRelayTx.data,
-          gas: result.selfRelayTx.gasLimit,
-        });
-        return { txHash: hash };
-      }
-
-      return result;
-    },
+  const { sendMutation, sendSubLabel, proofProgress, sendButtonLabel } = useSendFlow({
+    intent,
+    formChain,
+    recipient,
+    sendAmount,
+    sendTransactionAsync,
     onSuccess: () => {
       clearSendFlow();
       setTimeout(() => stepper.navigation.goTo("done"), 600);
     },
   });
 
+  const { poiStatus } = usePPOIPolling({
+    active: phase === "mixing" && !needsResign,
+    formChain,
+    onSpendable: () => stepper.navigation.goTo("send"),
+  });
+
+  useFlowPersistence({
+    mounted,
+    isConnected,
+    state: { phase, intent, formChain, txHash, mixingStartedAt, recipient, sendAmount },
+    form,
+    onRestore: (r) => {
+      setIntent(r.intent);
+      setTxHash(r.txHash);
+      setMixingStartedAt(r.mixingStartedAt);
+      setRecipient(r.recipient);
+      setSendAmount(r.sendAmount);
+      setNeedsResign(r.needsResign);
+      stepper.navigation.goTo(r.phase);
+    },
+  });
+
+  // ── derived values ────────────────────────────────────────────────────
   const sendAvailRaw = intent ? parseFloat(intent.amount) * (1 - 0.0025) : 0;
-  // Floor to 2 decimals so the displayed "Available" matches what validation accepts
   const sendAvail = Math.floor(sendAvailRaw * 100) / 100;
   const isValidRecipient =
-    (recipient.startsWith("0x") && recipient.length === 42) ||
-    recipient.startsWith("0zk");
+    (recipient.startsWith("0x") && recipient.length === 42) || recipient.startsWith("0zk");
   const sendValid =
-    isValidRecipient &&
-    parseFloat(sendAmount) > 0 &&
-    parseFloat(sendAmount) <= sendAvail;
+    isValidRecipient && parseFloat(sendAmount) > 0 && parseFloat(sendAmount) <= sendAvail;
 
-  // ── progress helpers
   const isProgress = (PROGRESS as string[]).includes(phase);
   const progressIdx = PROGRESS.indexOf(phase as (typeof PROGRESS)[number]);
-
-  const shieldButtonLabel = shieldMutation.isPending
-    ? shieldSubPhase === "approving"
-      ? "Approve in wallet…"
-      : "Shielding funds…"
-    : shieldMutation.isError
-      ? "Try again"
-      : "Deposit into pool";
-
-  const sendButtonLabel = sendMutation.isPending
-    ? sendSubLabel === "proving"
-      ? "Generating ZK proof…"
-      : "Broadcasting…"
-    : sendMutation.isSuccess
-      ? "Sent"
-      : sendMutation.isError
-        ? "Try again"
-        : "Confirm Send";
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
