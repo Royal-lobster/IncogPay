@@ -127,7 +127,11 @@ export async function privateSend(
 
   const broadcasterFeeRecipient: RailgunERC20AmountRecipient | undefined = undefined;
 
-  const overallBatchMinGasPrice = gasEstimate.gasEstimate ?? BigInt(0);
+  // For self-relay, overallBatchMinGasPrice must be 0 — there is no broadcaster
+  // to pay, so no minimum gas price commitment is needed in the ZK proof.
+  // (Using the gas *limit* as a gas *price* was a semantic bug — the values are
+  //  in different units and caused proof/populate mismatch on some RPCs.)
+  const overallBatchMinGasPrice = BigInt(0);
 
   // ── Step 3: Generate ZK proof ──────────────────────────────────────────
   onProgress?.("Generating proof...", 0);
@@ -163,18 +167,24 @@ export async function privateSend(
   // ── Step 4: Populate proved transaction ────────────────────────────────
   onProgress?.("Preparing transaction...");
 
+  // Use a safe non-zero fee estimate for the populate call.
+  // The user's wallet (MetaMask) will override maxFeePerGas when signing,
+  // so this value only needs to be a plausible placeholder.
+  // 0.5 gwei is well above typical Arbitrum fees (0.01–0.1 gwei).
+  const placeholderGasPrice = BigInt(500_000_000); // 0.5 gwei
+
   const finalGasDetails: TransactionGasDetails =
     defaultEVMGasType === EVMGasType.Type2
       ? {
           evmGasType: EVMGasType.Type2,
           gasEstimate: gasEstimate.gasEstimate,
-          maxFeePerGas: overallBatchMinGasPrice,
-          maxPriorityFeePerGas: overallBatchMinGasPrice,
+          maxFeePerGas: placeholderGasPrice,
+          maxPriorityFeePerGas: placeholderGasPrice,
         }
       : {
           evmGasType: EVMGasType.Type0,
           gasEstimate: gasEstimate.gasEstimate,
-          gasPrice: overallBatchMinGasPrice,
+          gasPrice: placeholderGasPrice,
         };
 
   const populateResult = await populateProvedUnshield(
