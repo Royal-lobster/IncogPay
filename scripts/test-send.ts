@@ -57,19 +57,24 @@ if (!PRIVATE_KEY) {
 import {
   ArtifactStore,
   balanceForERC20Token,
+  calculateBroadcasterFeeERC20Amount,
   createRailgunWallet,
   gasEstimateForShield,
+  gasEstimateForUnprovenUnshield,
+  generateUnshieldProof,
   getProver,
   getShieldPrivateKeySignatureMessage,
   loadProvider,
   loadWalletByID,
+  populateProvedUnshield,
   populateShield,
   refreshBalances,
   startRailgunEngine,
   walletForID,
 } from "@railgun-community/wallet";
-import type { TransactionGasDetails } from "@railgun-community/shared-models";
+import type { FeeTokenDetails, TransactionGasDetails } from "@railgun-community/shared-models";
 import { EVMGasType, NETWORK_CONFIG, NetworkName, TXIDVersion } from "@railgun-community/shared-models";
+import { findBestBroadcaster, sendViaBroadcaster } from "../lib/railgun/broadcaster";
 // @ts-expect-error — snarkjs has no bundled types
 import { groth16 } from "snarkjs";
 // @ts-expect-error — leveldown has no bundled types
@@ -272,106 +277,242 @@ async function main() {
   const sDisp = (Number(spendable) / 10 ** TOKEN_DECIMALS).toFixed(6);
   const tDisp = (Number(total)     / 10 ** TOKEN_DECIMALS).toFixed(6);
 
+  // ── Check public USDC balance (for auto-shield decision) ──────────────────
+  const erc20 = new ethers.Contract(
+    TOKEN_ADDRESS,
+    ["function balanceOf(address) view returns (uint256)", "function approve(address,uint256) returns (bool)"],
+    signer,
+  );
+  const publicUSDC: bigint = await erc20.balanceOf(signer.address).catch(() => BigInt(0));
+  const publicUSDCDisplay = (Number(publicUSDC) / 10 ** TOKEN_DECIMALS).toFixed(6);
+
   if (spendable > BigInt(0)) {
     ok(`Spendable: ${sDisp}  |  Total: ${tDisp}`);
   } else if (total > BigInt(0)) {
-    warn(`Total: ${tDisp} but not yet spendable (PPOI pending). Come back in a few minutes.`);
+    warn(`Total: ${tDisp} but not yet spendable — PPOI verification in progress`);
+  } else if (publicUSDC > BigInt(0)) {
+    info(`No shielded balance. Public wallet has ${publicUSDCDisplay} USDC — will shield now.`);
   } else {
-    warn(`No balance found. Either merkle sync is incomplete or no tokens shielded.`);
-    info(`Shield your token first: npx tsx scripts/test-send.ts (runs shield dry-run below)`);
+    fail("No public or shielded USDC found. Fund the wallet first.");
+    process.exit(1);
   }
 
-  // ── STEP 4a: Unshield + self-relay ────────────────────────────────────────
   const sendAmountUnits = BigInt(Math.floor(parseFloat(SEND_AMOUNT) * 10 ** TOKEN_DECIMALS));
+  const { defaultEVMGasType } = NETWORK_CONFIG[networkName];
 
-  if (spendable >= sendAmountUnits && RECIPIENT) {
-    step(4, `Unshield ${SEND_AMOUNT} → ${RECIPIENT}`);
-
-    const recipients = [{ tokenAddress: TOKEN_ADDRESS, amount: sendAmountUnits, recipientAddress: RECIPIENT }];
-    const { defaultEVMGasType } = NETWORK_CONFIG[networkName];
-
-    // ── Use privateSend() from lib/railgun — same code path as the browser
-    // @ts-expect-error — dynamic import for ESM/CJS compat in tsx
-    const { privateSend } = await import("../lib/railgun/transfer.js");
-
-    const result = await privateSend(
-      CHAIN_ID,
-      railgunWalletId,
-      encryptionKey,
-      TOKEN_ADDRESS,
-      sendAmountUnits,
-      RECIPIENT,
-      (phase: string, pct?: number) => {
-        if (pct !== undefined) {
-          process.stdout.write(`\r  ⏳ ${phase} ${pct}%   `);
-        } else {
-          process.stdout.write(`\r  ⏳ ${phase.padEnd(60)}`);
-        }
-      },
-    );
-    console.log();
-
-    if (result.selfRelayTx) {
-      warn("No relayer found — falling back to self-relay (reduced privacy)");
-      info("Broadcasting via signer wallet...");
-      const txResp = await signer.sendTransaction({
-        to:       result.selfRelayTx.to as string,
-        data:     result.selfRelayTx.data,
-        gasLimit: result.selfRelayTx.gasLimit,
-      });
-      ok(`TX sent! Hash: ${txResp.hash}`);
-      info(`Explorer: https://arbiscan.io/tx/${txResp.hash}`);
-      const receipt = await txResp.wait(1);
-      if (receipt?.status === 1) {
-        ok(`Confirmed in block ${receipt.blockNumber}`);
-        warn("Self-relay: recipient can see sender wallet address");
-      } else {
-        fail(`Transaction reverted in block ${receipt?.blockNumber}`);
-      }
-    } else {
-      ok(`TX hash: ${result.txHash}`);
-      info(`Explorer: https://arbiscan.io/tx/${result.txHash}`);
-      ok("Broadcaster path used — recipient only sees RAILGUN contract address ✓");
-    }
-
-  } else if (spendable >= sendAmountUnits && !RECIPIENT) {
-    step(4, "Send step skipped");
-    warn("Set RECIPIENT= in scripts/.env to run the full send test");
-
-  } else {
-    // ── STEP 4b: Shield dry-run ───────────────────────────────────────────
-    step(4, "Shield Dry-Run (populate only — NOT broadcast)");
-
-    if (spendable > BigInt(0) && spendable < sendAmountUnits) {
-      warn(`Spendable (${sDisp}) < SEND_AMOUNT (${SEND_AMOUNT}). Lower SEND_AMOUNT in .env to test unshield.`);
-    }
+  // ── STEP 4: Shield (if no shielded balance yet) ───────────────────────────
+  if (total === BigInt(0) && spendable === BigInt(0) && publicUSDC > BigInt(0)) {
+    step(4, "Shield USDC into RAILGUN pool");
 
     const shieldMsg = getShieldPrivateKeySignatureMessage();
     const shieldSig = await signer.signMessage(shieldMsg);
     const shieldKey = ethers.keccak256(ethers.getBytes(shieldSig));
-    const testAmt   = BigInt(1_000); // 0.001 USDC just to test populate
+    const shieldAmt = publicUSDC < sendAmountUnits ? publicUSDC : sendAmountUnits;
+    const shieldRecipients = [{ tokenAddress: TOKEN_ADDRESS, amount: shieldAmt, recipientAddress: railgunAddress }];
 
-    const shieldRecipients = [{ tokenAddress: TOKEN_ADDRESS, amount: testAmt, recipientAddress: railgunAddress }];
+    // Approve
+    info(`Approving ${(Number(shieldAmt) / 10 ** TOKEN_DECIMALS).toFixed(6)} USDC to RAILGUN proxy...`);
+    const proxyContract = NETWORK_CONFIG[networkName].proxyContract;
+    const approveTx = await erc20.approve(proxyContract, shieldAmt);
+    await approveTx.wait(1);
+    ok(`Approved. TX: https://arbiscan.io/tx/${approveTx.hash}`);
 
-    try {
-      info(`Estimating gas for shield (${Number(testAmt) / 10 ** TOKEN_DECIMALS} tokens)...`);
-      const gasResult = await gasEstimateForShield(TXID_VERSION, networkName, shieldKey, shieldRecipients, [], signer.address);
-      ok(`Shield gas estimate: ${gasResult.gasEstimate.toString()} gas units`);
+    // Estimate + populate + send shield
+    info("Estimating gas for shield...");
+    const gasResult = await gasEstimateForShield(TXID_VERSION, networkName, shieldKey, shieldRecipients, [], signer.address);
+    ok(`Gas estimate: ${gasResult.gasEstimate.toString()}`);
 
-      const { defaultEVMGasType } = NETWORK_CONFIG[networkName];
-      const gasDetails = (defaultEVMGasType === EVMGasType.Type2
-        ? { evmGasType: EVMGasType.Type2, gasEstimate: gasResult.gasEstimate, maxFeePerGas, maxPriorityFeePerGas: maxFeePerGas }
-        : { evmGasType: EVMGasType.Type0, gasEstimate: gasResult.gasEstimate, gasPrice: maxFeePerGas }) as TransactionGasDetails;
+    const gasDetails = (defaultEVMGasType === EVMGasType.Type2
+      ? { evmGasType: EVMGasType.Type2, gasEstimate: gasResult.gasEstimate, maxFeePerGas, maxPriorityFeePerGas: maxFeePerGas }
+      : { evmGasType: EVMGasType.Type0, gasEstimate: gasResult.gasEstimate, gasPrice: maxFeePerGas }) as TransactionGasDetails;
 
-      const { transaction } = await populateShield(TXID_VERSION, networkName, shieldKey, shieldRecipients, [], gasDetails);
-      ok("Shield tx populated (not broadcast — dry-run only)");
-      info(`  to:   ${transaction.to}`);
-      info(`  data: ${String(transaction.data).slice(0, 20)}…`);
-      info("To actually shield: send this tx from a funded wallet with ${TOKEN_ADDRESS} balance");
-    } catch (e) {
-      fail(`Shield dry-run failed: ${e}`);
-      console.error(e);
+    const { transaction } = await populateShield(TXID_VERSION, networkName, shieldKey, shieldRecipients, [], gasDetails);
+    info("Sending shield transaction...");
+    const shieldTx = await signer.sendTransaction({
+      to: transaction.to!,
+      data: transaction.data! as string,
+      value: transaction.value ? BigInt(transaction.value.toString()) : BigInt(0),
+    });
+    await shieldTx.wait(1);
+    ok(`Shielded! TX: https://arbiscan.io/tx/${shieldTx.hash}`);
+    info("PPOI verification will now run on-chain. This typically takes 10–30 minutes.");
+    info("Continuing to poll for spendable balance...");
+  }
+
+  // ── STEP 5: Wait for PPOI (spendable balance) ─────────────────────────────
+  step(5, "Waiting for PPOI Verification");
+
+  if (spendable < sendAmountUnits) {
+    info("Polling every 30s — PPOI usually completes in 10–30 min on Arbitrum...");
+    const PPOI_MAX_WAIT_MS  = 50 * 60 * 1000; // 50 minutes
+    const PPOI_POLL_MS      = 30_000;
+    const started           = Date.now();
+
+    while (spendable < sendAmountUnits) {
+      if (Date.now() - started > PPOI_MAX_WAIT_MS) {
+        fail("PPOI wait timed out after 50 minutes. Run the script again later.");
+        process.exit(1);
+      }
+      const elapsed = Math.round((Date.now() - started) / 1000);
+      process.stdout.write(`\r  ⏳ Waiting for PPOI... ${elapsed}s elapsed    `);
+      await new Promise(r => setTimeout(r, PPOI_POLL_MS));
+
+      await refreshBalances(chain, [railgunWalletId]).catch(() => {});
+      try {
+        const w = walletForID(railgunWalletId);
+        spendable = await balanceForERC20Token(TXID_VERSION, w, networkName, TOKEN_ADDRESS, true);
+      } catch { /* ignore */ }
     }
+    console.log();
+    ok(`Spendable balance confirmed: ${(Number(spendable) / 10 ** TOKEN_DECIMALS).toFixed(6)} USDC`);
+  } else {
+    ok(`Already spendable: ${sDisp}`);
+  }
+
+  if (!RECIPIENT) {
+    warn("RECIPIENT not set — skipping send. Set RECIPIENT= in scripts/.env");
+    process.exit(0);
+  }
+
+  // ── STEP 6: Send via broadcaster (or self-relay fallback) ─────────────────
+  step(6, `Send ${SEND_AMOUNT} USDC → ${RECIPIENT}`);
+
+  const recipients = [{ tokenAddress: TOKEN_ADDRESS, amount: sendAmountUnits, recipientAddress: RECIPIENT }];
+  const dummyGas = (defaultEVMGasType === EVMGasType.Type2
+    ? { evmGasType: EVMGasType.Type2, gasEstimate: BigInt(0), maxFeePerGas: BigInt(0), maxPriorityFeePerGas: BigInt(0) }
+    : { evmGasType: EVMGasType.Type0, gasEstimate: BigInt(0), gasPrice: BigInt(0) }) as TransactionGasDetails;
+
+  // Find broadcaster
+  info("Searching for Waku broadcaster...");
+  const broadcaster = await findBestBroadcaster(networkName, TOKEN_ADDRESS, (m) => info(m)).catch(() => null);
+  let selfRelay = broadcaster === null;
+
+  if (selfRelay) {
+    warn("No broadcaster found — using self-relay (recipient sees sender address, reduced privacy)");
+  } else {
+    ok(`Broadcaster: ${broadcaster!.railgunAddress}`);
+  }
+
+  // Gas estimate pass 1 — always sendWithPublicWallet=true (required when no feeTokenDetails)
+  const est1 = await gasEstimateForUnprovenUnshield(
+    TXID_VERSION, networkName, railgunWalletId, encryptionKey,
+    recipients, [], dummyGas, undefined, true,
+  );
+
+  let broadcasterFeeRecipient: typeof recipients[0] | undefined;
+  let overallBatchMinGasPrice = BigInt(0);
+  let finalGasEstimate = est1.gasEstimate;
+
+  if (!selfRelay && broadcaster) {
+    const feeTokenDetails: FeeTokenDetails = { tokenAddress: broadcaster.tokenAddress, feePerUnitGas: broadcaster.feePerUnitGas };
+    info(`DEBUG broadcaster.feePerUnitGas = ${broadcaster.feePerUnitGas.toString()}`);
+    info(`DEBUG est1.gasEstimate = ${est1.gasEstimate.toString()}`);
+    info(`DEBUG networkGasPrice (maxFeePerGas) = ${maxFeePerGas.toString()}`);
+
+    // Pass 2: use FeeTokenDetails (not a recipient!) + sendWithPublicWallet=false
+    const est2 = await gasEstimateForUnprovenUnshield(
+      TXID_VERSION, networkName, railgunWalletId, encryptionKey,
+      recipients, [], dummyGas, feeTokenDetails, false,
+    ).catch(() => est1);
+
+    // Use actual network gas price — feePerUnitGas is a token rate multiplier, not wei
+    const gasDetails2 = (defaultEVMGasType === EVMGasType.Type2
+      ? { evmGasType: EVMGasType.Type2, gasEstimate: est2.gasEstimate, maxFeePerGas, maxPriorityFeePerGas: maxFeePerGas }
+      : { evmGasType: EVMGasType.Type0, gasEstimate: est2.gasEstimate, gasPrice: maxFeePerGas }) as TransactionGasDetails;
+    const fee2 = calculateBroadcasterFeeERC20Amount(feeTokenDetails, gasDetails2);
+    info(`DEBUG raw fee = ${fee2.amount.toString()} atoms = ${(Number(fee2.amount) / 10 ** TOKEN_DECIMALS).toFixed(6)} USDC`);
+
+    // Sanity check: if fee > 50% of spendable balance, broadcaster is misconfigured → fall back
+    if (fee2.amount > spendable / BigInt(2)) {
+      warn(`Broadcaster fee (${fee2.amount} atoms) exceeds 50% of balance — falling back to self-relay`);
+      selfRelay = true;   // ← must flip so proof + submit use self-relay path
+      broadcasterFeeRecipient = undefined;
+      overallBatchMinGasPrice = BigInt(0);
+      finalGasEstimate = est1.gasEstimate;
+    } else {
+      broadcasterFeeRecipient = { tokenAddress: fee2.tokenAddress, amount: fee2.amount, recipientAddress: broadcaster.railgunAddress };
+      overallBatchMinGasPrice = broadcaster.feePerUnitGas;
+      finalGasEstimate = est2.gasEstimate;
+      ok(`Broadcaster fee: ${(Number(fee2.amount) / 10 ** TOKEN_DECIMALS).toFixed(6)} USDC`);
+    }
+  }
+
+  // Generate ZK proof
+  info("Generating ZK proof (first run downloads ~20MB WASM, 30–120s)...");
+  const t0 = Date.now();
+  try {
+    await generateUnshieldProof(
+      TXID_VERSION, networkName, railgunWalletId, encryptionKey,
+      recipients, [], broadcasterFeeRecipient, selfRelay, overallBatchMinGasPrice,
+      (progress, status) => {
+        process.stdout.write(`\r  ⏳ Proof ${Math.round(progress * 100)}% — ${(status ?? "").slice(0, 40).padEnd(40)}`);
+      },
+    );
+    console.log();
+    ok(`Proof generated in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  } catch (e) {
+    console.log();
+    fail(`generateUnshieldProof: ${e}`);
+    console.error(e);
+    process.exit(1);
+  }
+
+  // Populate
+  info("Populating proved transaction...");
+  // For Arbitrum with broadcaster: getEVMGasTypeForTransaction returns Type1 (not Type2).
+  // Type1 uses gasPrice field. Only self-relay (sendWithPublicWallet) uses Type2 on Arbitrum.
+  const safePrice = maxFeePerGas > BigInt(500_000_000) ? maxFeePerGas : BigInt(500_000_000);
+  const populateGasType = (!selfRelay && defaultEVMGasType === EVMGasType.Type2)
+    ? EVMGasType.Type1
+    : defaultEVMGasType;
+  const finalGasDetails = (populateGasType === EVMGasType.Type2
+    ? { evmGasType: EVMGasType.Type2, gasEstimate: finalGasEstimate, maxFeePerGas: safePrice, maxPriorityFeePerGas: safePrice }
+    : { evmGasType: populateGasType, gasEstimate: finalGasEstimate, gasPrice: safePrice }) as TransactionGasDetails;
+
+  const populated = await populateProvedUnshield(
+    TXID_VERSION, networkName, railgunWalletId,
+    recipients, [], broadcasterFeeRecipient, selfRelay, overallBatchMinGasPrice, finalGasDetails,
+  );
+
+  if (!populated?.transaction) {
+    fail(`populateProvedUnshield returned no transaction`);
+    process.exit(1);
+  }
+  ok("Transaction populated");
+
+  // Submit
+  if (!selfRelay && broadcaster) {
+    info("Submitting via broadcaster...");
+    try {
+      const txHash = await sendViaBroadcaster(
+        TXID_VERSION,
+        { to: populated.transaction.to!, data: populated.transaction.data! as string },
+        broadcaster.railgunAddress,
+        broadcaster.feesID,
+        chain,
+        populated.nullifiers ?? [],
+        overallBatchMinGasPrice,
+        false,
+        populated.preTransactionPOIsPerTxidLeafPerList,
+      );
+      ok(`✅ TX HASH: ${txHash}`);
+      ok(`Explorer: https://arbiscan.io/tx/${txHash}`);
+      ok(`Recipient (${RECIPIENT}) will see funds from RAILGUN contract — NOT from ${signer.address}`);
+    } catch (e) {
+      fail(`Broadcaster submission failed: ${e}`);
+      console.error(e);
+      process.exit(1);
+    }
+  } else {
+    warn("Self-relay fallback — signing with sender wallet");
+    const txResp = await signer.sendTransaction({
+      to: populated.transaction.to!,
+      data: populated.transaction.data! as string,
+      gasLimit: finalGasEstimate,
+    });
+    ok(`TX sent: https://arbiscan.io/tx/${txResp.hash}`);
+    await txResp.wait(1);
+    warn("⚠️  Recipient can see sender wallet address (self-relay)");
   }
 
   console.log();

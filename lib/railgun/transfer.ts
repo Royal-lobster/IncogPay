@@ -3,7 +3,7 @@ import type {
   RailgunERC20AmountRecipient,
   TransactionGasDetails,
 } from "@railgun-community/shared-models";
-import { EVMGasType, NETWORK_CONFIG } from "@railgun-community/shared-models";
+import { EVMGasType, NETWORK_CONFIG, getEVMGasTypeForTransaction } from "@railgun-community/shared-models";
 import {
   balanceForERC20Token,
   calculateBroadcasterFeeERC20Amount,
@@ -14,7 +14,7 @@ import {
   walletForID,
 } from "@railgun-community/wallet";
 import { findBestBroadcaster, sendViaBroadcaster } from "./broadcaster";
-import { ensureProvider } from "./init";
+import { ensureProvider, getNetworkGasPrice } from "./init";
 import { getNetworkName, TXID_VERSION } from "./networks";
 import type { SendResult } from "./types";
 
@@ -65,6 +65,11 @@ export async function privateSend(
   const networkName = getNetworkName(chainId);
   await ensureProvider(networkName);
   const { chain, defaultEVMGasType } = NETWORK_CONFIG[networkName];
+
+  // Fetch actual network gas price once — used for broadcaster fee calculation.
+  // The broadcaster's feePerUnitGas is a token-rate multiplier, NOT a gas price.
+  const networkGasPrice = await getNetworkGasPrice(networkName);
+  console.log("[IncogPay] Network gas price:", networkGasPrice.toString(), "wei");
 
   // ── 1. Balance sync ────────────────────────────────────────────────────
   // Poll until the merkle tree scan has confirmed spendable balance.
@@ -126,19 +131,26 @@ export async function privateSend(
     console.log("[IncogPay] Broadcaster found:", broadcaster.railgunAddress);
   }
 
-  // ── 3. Gas estimate (first pass — without broadcaster fee) ────────────
+  // ── 3. Gas estimate (first pass — always sendWithPublicWallet=true) ───
+  // RAILGUN requires either a broadcaster fee OR sendWithPublicWallet=true.
+  // We always use public-wallet mode for the first pass to get a baseline
+  // gas estimate, then compute the broadcaster fee on top of that.
   onProgress?.("Estimating gas...");
   const dummyGas = makeDummyGasDetails(defaultEVMGasType);
 
   const firstEstimate = await gasEstimateForUnprovenUnshield(
     TXID_VERSION, networkName, walletId, encryptionKey,
     erc20Recipients, [], dummyGas,
-    undefined, // no broadcaster fee in first estimate
-    selfRelay,
+    undefined, // no broadcaster fee in first pass
+    true,      // sendWithPublicWallet=true — required when no fee provided
   );
   console.log("[IncogPay] First gas estimate:", firstEstimate.gasEstimate.toString());
 
   // ── 4. Compute broadcaster fee + second gas estimate ──────────────────
+  //
+  // gasEstimateForUnprovenUnshield accepts `FeeTokenDetails` (tokenAddress +
+  // feePerUnitGas). generateUnshieldProof / populateProvedUnshield accept a
+  // pre-computed `RailgunERC20AmountRecipient`. Keep the two types separate.
   let broadcasterFeeRecipient: RailgunERC20AmountRecipient | undefined;
   let overallBatchMinGasPrice: bigint;
   let finalGasEstimate: bigint;
@@ -148,47 +160,45 @@ export async function privateSend(
       tokenAddress: broadcaster.tokenAddress,
       feePerUnitGas: broadcaster.feePerUnitGas,
     };
-    const firstGasDetails = makeFinalGasDetails(
-      defaultEVMGasType,
-      firstEstimate.gasEstimate,
-      broadcaster.feePerUnitGas,
-    );
 
-    // Calculate fee from first estimate
-    const fee1 = calculateBroadcasterFeeERC20Amount(feeTokenDetails, firstGasDetails);
-
-    const feeRecipient1: RailgunERC20AmountRecipient = {
-      tokenAddress: fee1.tokenAddress,
-      amount: fee1.amount,
-      recipientAddress: broadcaster.railgunAddress,
-    };
-
-    // Second estimate with fee included (fee changes calldata size)
+    // Second estimate: pass FeeTokenDetails (not a recipient) + sendWithPublicWallet=false
     const secondEstimate = await gasEstimateForUnprovenUnshield(
       TXID_VERSION, networkName, walletId, encryptionKey,
       erc20Recipients, [], dummyGas,
-      feeRecipient1,
-      false, // sendWithPublicWallet
-    ).catch(() => firstEstimate); // fall back to first estimate if second fails
+      feeTokenDetails,   // <-- FeeTokenDetails, SDK computes fee amount internally
+      false,             // sendWithPublicWallet=false → broadcaster path
+    ).catch(() => firstEstimate);
 
+    // Use actual network gas price (NOT feePerUnitGas, which is a token rate)
     const finalGasDetails = makeFinalGasDetails(
       defaultEVMGasType,
       secondEstimate.gasEstimate,
-      broadcaster.feePerUnitGas,
+      networkGasPrice,
     );
 
-    // Final fee from second estimate
-    const fee2 = calculateBroadcasterFeeERC20Amount(feeTokenDetails, finalGasDetails);
+    // Compute the actual fee amount to attach to proof + populate calls.
+    // calculateBroadcasterFeeERC20Amount returns fee in the token's native base units.
+    const fee = calculateBroadcasterFeeERC20Amount(feeTokenDetails, finalGasDetails);
+    console.log("[IncogPay] Broadcaster fee:", fee.amount.toString(), "atoms");
 
-    broadcasterFeeRecipient = {
-      tokenAddress: fee2.tokenAddress,
-      amount: fee2.amount,
-      recipientAddress: broadcaster.railgunAddress,
-    };
+    // Sanity check: if fee exceeds 50% of the send amount, broadcaster is likely
+    // misconfigured or overcharging. Fall back to self-relay.
+    if (fee.amount > amount / BigInt(2)) {
+      console.warn("[IncogPay] Broadcaster fee too high — falling back to self-relay");
+      broadcasterFeeRecipient = undefined;
+      overallBatchMinGasPrice = BigInt(0);
+      finalGasEstimate = firstEstimate.gasEstimate;
+    } else {
+      broadcasterFeeRecipient = {
+        tokenAddress: fee.tokenAddress,
+        amount: fee.amount,
+        recipientAddress: broadcaster.railgunAddress,
+      };
+    }
     overallBatchMinGasPrice = broadcaster.feePerUnitGas;
     finalGasEstimate = secondEstimate.gasEstimate;
 
-    console.log("[IncogPay] Broadcaster fee:", fee2.amount.toString(), fee2.tokenAddress);
+    console.log("[IncogPay] Broadcaster fee:", fee.amount.toString(), fee.tokenAddress);
     console.log("[IncogPay] Final gas estimate:", finalGasEstimate.toString());
   } else {
     // Self-relay: no broadcaster fee, gas price commitment = 0
@@ -220,8 +230,11 @@ export async function privateSend(
   }
 
   // ── 6. Populate proved transaction ─────────────────────────────────────
+  // getEVMGasTypeForTransaction returns Type1 for broadcaster on Arbitrum (Type2 network).
+  // Type1 uses gasPrice, Type2 uses maxFeePerGas. Must match what the SDK expects.
   onProgress?.("Preparing transaction...");
-  const gasDetails = makeFinalGasDetails(defaultEVMGasType, finalGasEstimate, overallBatchMinGasPrice);
+  const populateGasType = getEVMGasTypeForTransaction(networkName, selfRelay);
+  const gasDetails = makeFinalGasDetails(populateGasType, finalGasEstimate, networkGasPrice);
 
   const populated = await populateProvedUnshield(
     TXID_VERSION, networkName, walletId,

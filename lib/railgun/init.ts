@@ -1,5 +1,6 @@
 import { NETWORK_CONFIG, NetworkName } from "@railgun-community/shared-models";
 import { ArtifactStore, getProver, loadProvider, startRailgunEngine } from "@railgun-community/wallet";
+import { JsonRpcProvider } from "ethers";
 
 // level-js has no TypeScript declarations — import as untyped and cast.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -10,6 +11,7 @@ const LevelDB = require("level-js") as new (
 // ── singleton promises ────────────────────────────────────────────────────
 let initPromise: Promise<void> | null = null;
 const loadedProviders = new Set<NetworkName>();
+const networkRpcUrls = new Map<NetworkName, string>(); // stored for gas price queries
 
 // ── artifact store (caches WASM proof files in IndexedDB via level-js) ────
 function createArtifactStore(): ArtifactStore {
@@ -142,6 +144,7 @@ export async function ensureProvider(networkName: NetworkName): Promise<void> {
   const proxyUrl = `${base}/api/rpc/${proxyKey}`;
   const { chain } = NETWORK_CONFIG[networkName];
 
+  networkRpcUrls.set(networkName, proxyUrl); // stored for getNetworkGasPrice()
   console.log(`[IncogPay] Loading provider for ${networkName} via ${proxyUrl}`);
 
   await loadProvider(
@@ -157,6 +160,25 @@ export async function ensureProvider(networkName: NetworkName): Promise<void> {
 
   loadedProviders.add(networkName);
   console.log(`[IncogPay] Provider loaded for ${networkName}`);
+}
+
+/**
+ * Fetch the current network gas price (in wei) using the provider URL stored
+ * when ensureProvider() was called.  Falls back to 0.5 gwei if unavailable.
+ * Used by transfer.ts to compute broadcaster fees correctly.
+ */
+export async function getNetworkGasPrice(networkName: NetworkName): Promise<bigint> {
+  const FALLBACK = BigInt(500_000_000); // 0.5 gwei
+  const rpcUrl = networkRpcUrls.get(networkName);
+  if (!rpcUrl) return FALLBACK;
+  try {
+    const provider = new JsonRpcProvider(rpcUrl);
+    const feeData = await provider.getFeeData();
+    const price = feeData.maxFeePerGas ?? feeData.gasPrice ?? FALLBACK;
+    return price > BigInt(0) ? price : FALLBACK;
+  } catch {
+    return FALLBACK;
+  }
 }
 
 async function doInit(): Promise<void> {
